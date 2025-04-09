@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebXR NPC Salesperson Demo</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; }
+        #info {
+            position: absolute;
+            top: 10px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            pointer-events: none;
+            z-index: 100;
+        }
+        #speechBubble {
+            position: absolute;
+            bottom: 20%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.8);
+            color: black;
+            padding: 10px 15px;
+            border-radius: 15px;
+            font-family: Arial, sans-serif;
+            max-width: 80%;
+            display: none;
+            z-index: 100;
+        }
+       
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(68, 255, 68, 0.7); }
+            70% { box-shadow: 0 0 0 15px rgba(68, 255, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(68, 255, 68, 0); }
+        }
+        .loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">WebXR NPC Salesperson Demo</div>
+    <div id="speechBubble"></div>
+    
+    <div class="loading" id="loadingScreen">Loading... Please wait</div>
+
+    <!-- Import libraries via CDN -->
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { VRButton } from 'three/addons/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+        import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+
+        // Global variables
+        let camera, scene, renderer, clock;
+        let userAvatar, npcAvatar;
+        let userMixer, npcMixer;
+        let userAnimations = {}, npcAnimations = {};
+        let ground;
+        let controller1, controller2;
+        let userHeight = 1.6; // Average height in meters
+        let isListening = false;
+        let recognition;
+        let npcFollowingUser = true;
+        let speechBubble;
+        let loadingManager;
+        let loadingScreen;
+        let npcSpeaking = false;
+        let audioContext;
+        let mediaRecorder;
+        let audioChunks = [];
+        let isRecording = false;
+        let isMuted = false;
+        let muteButton;
+        
+        // Initialize and run the application
+        init();
+        animate();
+
+        function init() {
+            loadingScreen = document.getElementById('loadingScreen');
+            speechBubble = document.getElementById('speechBubble');
+            
+            // Set up loading manager to track asset loading
+            loadingManager = new THREE.LoadingManager();
+            loadingManager.onLoad = () => {
+                loadingScreen.style.display = 'none';
+            };
+            
+            // Initialize scene
+            clock = new THREE.Clock();
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Sky blue
+            
+            // Initialize camera
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, userHeight, 3);
+            
+            // Set up renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true;
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement);
+            
+            // Add VR button
+            document.body.appendChild(VRButton.createButton(renderer));
+            
+            // Set up lighting
+            setupLighting();
+            
+            // Create environment
+            createEnvironment();
+            
+            // Set up controllers
+            setupControllers();
+
+            createMuteToggle();
+            
+            
+            setupAudioCapture();
+
+            startRecordingContinuous();
+            
+           
+
+            initPlaceholderAvatars();
+            
+            // Load avatar models
+             loadAvatarModels();
+            
+            // Handle window resize
+            window.addEventListener('resize', onWindowResize);
+        }
+        
+
+
+        function setupLighting() {
+            // Ambient light
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            
+            // Directional light (sun)
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 10);
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -10;
+            directionalLight.shadow.camera.right = 10;
+            directionalLight.shadow.camera.top = 10;
+            directionalLight.shadow.camera.bottom = -10;
+            scene.add(directionalLight);
+        }
+        
+        function createEnvironment() {
+            // Create ground
+            const groundGeometry = new THREE.PlaneGeometry(100, 100);
+            const groundMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x7CFC00, // Lawn green
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+            ground.receiveShadow = true;
+            scene.add(ground);
+            
+            // Add simple skybox
+            const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
+            const skyMaterial = new THREE.MeshBasicMaterial({
+                color: 0x87CEEB,
+                side: THREE.BackSide
+            });
+            const sky = new THREE.Mesh(skyGeometry, skyMaterial);
+            scene.add(sky);
+        }
+        
+        function setupControllers() {
+            // Controller setup for VR
+            controller1 = renderer.xr.getController(0);
+            scene.add(controller1);
+            
+            controller2 = renderer.xr.getController(1);
+            scene.add(controller2);
+            
+            // Controller models
+            const controllerModelFactory = new XRControllerModelFactory();
+            
+            const controllerGrip1 = renderer.xr.getControllerGrip(0);
+            controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+            scene.add(controllerGrip1);
+            
+            const controllerGrip2 = renderer.xr.getControllerGrip(1);
+            controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+            scene.add(controllerGrip2);
+        }
+
+
+        fetch('box.gltf') // Check the simple test file first
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error, status = ${response.status}`);
+        }
+        console.log('Test GLTF file exists');
+        return true;
+    })
+    .then(() => {
+        // If box.gltf exists, check the npc avatar file
+        return fetch('npc-avatar.gltf');
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP error, status = ${response.status}`);
+        }
+        console.log('NPC Avatar GLTF file exists');
+        return response.blob();
+    })
+    .then(blob => {
+        console.log('GLTF file size:', blob.size, 'bytes');
+        if (blob.size < 1000) {
+            console.warn('Warning: GLTF file is suspiciously small!');
+        }
+    })
+    .catch(error => {
+        console.error('Error checking model files:', error);
+    });
+        
+    function loadAvatarModels() {
+    // First initialize placeholder avatars so we always have something
+    initPlaceholderAvatars();
+    
+    console.log('Starting to load avatar models...');
+    
+    // Then try loading the actual models
+    const gltfLoader = new GLTFLoader(loadingManager);
+    
+    // Start by testing with the simple box to verify the loader works
+    console.log('Loading test box model...');
+    gltfLoader.load(
+        'box.gltf',
+        function(gltf) {
+            console.log('Test box loaded successfully!');
+            
+            // Now try loading the actual avatar
+            loadNPCAvatar();
+        },
+        function(xhr) {
+            console.log('Box model loading: ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        function(error) {
+            console.error('Error loading test box:', error);
+            // Try loading the avatar anyway
+            loadNPCAvatar();
+        }
+    );
+    
+    // Function to load the NPC avatar
+    function loadNPCAvatar() {
+        console.log('Attempting to load NPC avatar GLTF...');
+        gltfLoader.load(
+            'npc-avatar.gltf',
+            onModelLoaded,
+            function(xhr) {
+                console.log('NPC model load progress:', (xhr.loaded / xhr.total * 100) + '%');
+            },
+            function(error) {
+                console.error('Error loading local NPC model:', error);
+                console.log('Trying fallback model...');
+                
+                // The Duck model is a reliable test model from three.js examples
+                gltfLoader.load(
+                    'https://threejs.org/examples/models/gltf/Duck/glTF/Duck.gltf',
+                    onModelLoaded,
+                    undefined,
+                    function(fallbackError) {
+                        console.error('Error loading fallback model:', fallbackError);
+                        
+                        // Try the ReadyPlayerMe model as a last resort (GLB format)
+                        gltfLoader.load(
+                            'https://assets.readyplayer.me/avatars/6495c87ff9e619e96d3445e2.glb', 
+                            onModelLoaded,
+                            undefined,
+                            function(rpmError) {
+                                console.error('All model loading attempts failed:', rpmError);
+                            }
+                        );
+                    }
+                );
+            }
+        );
+    }
+    
+    // Shared success handler function
+    function onModelLoaded(gltf) {
+        console.log('Model loaded successfully:', gltf);
+        try {
+            // Remove placeholder
+            scene.remove(npcAvatar);
+            
+            // Add model to the scene
+            npcAvatar = gltf.scene;
+            npcAvatar.position.set(2, 0.5, 0); // Raised position so not in ground
+            npcAvatar.scale.set(1, 1, 1);
+            npcAvatar.castShadow = true;
+            
+            // Log model details
+            let meshCount = 0;
+            npcAvatar.traverse(function(child) {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    meshCount++;
+                    console.log(`Found mesh: ${child.name}`);
+                }
+            });
+            console.log(`Total meshes in model: ${meshCount}`);
+            
+            scene.add(npcAvatar);
+            
+            // Set up animation mixer
+            npcMixer = new THREE.AnimationMixer(npcAvatar);
+            
+            // Check if the model has built-in animations
+            if (gltf.animations && gltf.animations.length > 0) {
+                console.log(`Model has ${gltf.animations.length} built-in animations`);
+                gltf.animations.forEach((anim, index) => {
+                    console.log(`Animation ${index}: ${anim.name || 'Unnamed'} (Duration: ${anim.duration}s)`);
+                });
+                
+                // Use the first animation as idle
+                const idleAction = npcMixer.clipAction(gltf.animations[0]);
+                npcAnimations['idle'] = idleAction;
+                idleAction.play();
+                
+                // If there's a second animation, use it for talking
+                if (gltf.animations.length > 1) {
+                    const talkAction = npcMixer.clipAction(gltf.animations[1]);
+                    npcAnimations['talking'] = talkAction;
+                }
+            } else {
+                console.log('No built-in animations found, creating procedural animations');
+                // Load simple procedural animations
+                loadNPCAnimations();
+            }
+        } catch (e) {
+            console.error('Error processing model:', e);
+            // Ensure we have the placeholder back if needed
+            initPlaceholderAvatars();
+        }
+    }
+}
+
+function initPlaceholderAvatars() {
+    // Create simple placeholder avatars until real models are loaded
+    
+    // User avatar placeholder (blue cylinder)
+    const userGeometry = new THREE.CapsuleGeometry(0.2, 1.2, 4, 8);
+    const userMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
+    userAvatar = new THREE.Mesh(userGeometry, userMaterial);
+    userAvatar.position.set(0, userHeight / 2, 0);
+    userAvatar.castShadow = true;
+    scene.add(userAvatar);
+    
+    // NPC avatar placeholder (red cylinder)
+    const npcGeometry = new THREE.CapsuleGeometry(0.2, 1.2, 4, 8);
+    const npcMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+    npcAvatar = new THREE.Mesh(npcGeometry, npcMaterial);
+    npcAvatar.position.set(2, userHeight / 2, 0);
+    npcAvatar.castShadow = true;
+    scene.add(npcAvatar);
+}
+
+function loadNPCAnimations() {
+    console.log('Creating procedural animations...');
+    
+    // Only continue if we have a valid mixer
+    if (!npcMixer) {
+        console.error('Cannot create animations - npcMixer is not initialized');
+        return;
+    }
+    
+    try {
+        // Find a suitable target for animations
+        let animationTarget = '.'; // Default to root
+        
+        // Try to find the character's head or body for targeting
+        npcAvatar.traverse(function(object) {
+            if (object.isMesh) {
+                const name = object.name.toLowerCase();
+                if (name.includes('head') || name.includes('face')) {
+                    console.log('Found head mesh for animations:', object.name);
+                    animationTarget = object.name;
+                    return;
+                } else if (name.includes('body') || name.includes('torso')) {
+                    console.log('Found body mesh for animations:', object.name);
+                    animationTarget = object.name;
+                }
+            }
+        });
+        
+        console.log('Using animation target:', animationTarget);
+        
+        // Create a very simple animation for idle
+        const idleClip = THREE.AnimationClip.parse({
+            name: 'idle',
+            duration: 4,
+            tracks: [
+                new THREE.NumberKeyframeTrack(
+                    `${animationTarget}.position[y]`, 
+                    [0, 2, 4], 
+                    [0.5, 0.53, 0.5]  // Gentle up and down movement
+                )
+            ]
+        });
+        
+        const idleAction = npcMixer.clipAction(idleClip);
+        npcAnimations['idle'] = idleAction;
+        idleAction.setLoop(THREE.LoopRepeat);
+        idleAction.play();
+        console.log('Idle animation created and playing');
+        
+        // Create a simple animation for talking
+        const talkingClip = THREE.AnimationClip.parse({
+            name: 'talking',
+            duration: 0.5,
+            tracks: [
+                new THREE.NumberKeyframeTrack(
+                    `${animationTarget}.position[y]`, 
+                    [0, 0.25, 0.5], 
+                    [0.5, 0.55, 0.5]  // Faster up and down movement for talking
+                )
+            ]
+        });
+        
+        const talkingAction = npcMixer.clipAction(talkingClip);
+        npcAnimations['talking'] = talkingAction;
+        console.log('Talking animation created');
+    } catch (e) {
+        console.error('Error creating procedural animations:', e);
+    }
+}
+        
+        function setupSpeechRecognition() {
+            // Set up Web Speech API if available
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+                
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    handleUserSpeech(transcript);
+                };
+                          
+                
+                recognition.onerror = function(event) {
+                    console.error('Speech recognition error:', event.error);
+                    isListening = false;
+                    document.getElementById('micButton').classList.remove('listening');
+                };
+            } else {
+                console.warn('Speech recognition not supported in this browser');
+                alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+            }
+        }
+        
+        
+        
+        function handleUserSpeech(text) {
+            console.log('User said:', text);
+            
+            // Show a loading indicator in the speech bubble
+            showSpeechBubble('...');
+            
+            // Call the AI API to get a response
+            callChatAPI(text)
+                .then(response => {
+                    // Show the AI response in the speech bubble
+                    showSpeechBubble(response);
+                    
+                    // Make the NPC speak
+                    npcSpeak(response);
+                })
+                .catch(error => {
+                    console.error('Error getting AI response:', error);
+                    showSpeechBubble('Sorry, I could not process your request.');
+                });
+        }
+        
+        async function callChatAPI(text) {
+            // Simulating an API call with a timeout
+            // Replace this with an actual API call to Gemini Flash or your preferred service
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    // Sample responses for testing
+                    const responses = [
+                        "Hello! How can I help you today?",
+                        "I'm a virtual sales assistant. Let me tell you about our products.",
+                        "That's an excellent question. Our product has many features including...",
+                        "The price starts at $99 with various options available.",
+                        "I'd be happy to show you a demo of how it works!"
+                    ];
+                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                    resolve(randomResponse);
+                }, 500); // 500ms delay simulates a fast API response
+            });
+        }
+        
+        function showSpeechBubble(text) {
+            speechBubble.textContent = text;
+            speechBubble.style.display = 'block';
+            
+            // Hide speech bubble after a delay
+            setTimeout(() => {
+                speechBubble.style.display = 'none';
+            }, text.length * 100 + 2000); // Duration based on text length
+        }
+        
+    function npcSpeak(text) {
+    npcSpeaking = true;
+    
+    // If we have a talking animation, use it
+    if (npcAnimations['talking']) {
+        // Crossfade from idle to talking
+        npcAnimations['idle'].fadeOut(0.5);
+        npcAnimations['talking'].reset().fadeIn(0.5).play();
+    } else {
+        // Fall back to simple animation if model/animations aren't loaded
+        animateNPCSpeaking();
+    }
+    
+    // End speaking after calculated duration
+    setTimeout(() => {
+        npcSpeaking = false;
+        
+        // Return to idle animation
+        if (npcAnimations['talking'] && npcAnimations['idle']) {
+            npcAnimations['talking'].fadeOut(0.5);
+            npcAnimations['idle'].reset().fadeIn(0.5).play();
+        }
+    }, text.length * 100); // Duration based on text length
+}
+        
+        function animateNPCSpeaking() {
+            // Placeholder for lip sync and animation logic
+            // This would be replaced with actual animation control for the NPC avatar
+            
+            // Wiggle the NPC for now
+            const intensity = 0.05;
+            npcAvatar.position.y = userHeight / 2 + Math.sin(clock.getElapsedTime() * 10) * intensity;
+        }
+        
+        function updateNPCMovement() {
+            if (!npcAvatar || !userAvatar) return;
+            
+            // If NPC should follow the user
+            if (npcFollowingUser) {
+                // Get direction to user
+                const direction = new THREE.Vector3();
+                direction.subVectors(userAvatar.position, npcAvatar.position);
+                direction.y = 0; // Keep on ground plane
+                
+                // Calculate distance to user
+                const distance = direction.length();
+                
+                // If not too close, move towards user
+                if (distance > 1.5) {
+                    direction.normalize();
+                    
+                    // Move NPC towards user
+                    const moveSpeed = 0.02;
+                    npcAvatar.position.x += direction.x * moveSpeed;
+                    npcAvatar.position.z += direction.z * moveSpeed;
+                    
+                    // Rotate NPC to face user
+                    npcAvatar.lookAt(
+                        userAvatar.position.x,
+                        npcAvatar.position.y,
+                        userAvatar.position.z
+                    );
+                }
+            }
+        }
+        
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        function setupAudioCapture() {
+            // Initialize Web Audio API context
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                console.error('Web Audio API is not supported in this browser:', e);
+                alert('Audio is not fully supported in this browser. Some features may not work.');
+            }
+        }
+
+
+
+
+        function createMuteToggle() {
+        // Create a simple sphere as the mute toggle
+        const geometry = new THREE.SphereGeometry(0.05, 16, 16);
+        const material = new THREE.MeshStandardMaterial({ 
+            color: 0x44ff44,  // Green for unmuted
+            emissive: 0x224422,
+            roughness: 0.3,
+            metalness: 0.8
+        });
+        
+        muteButton = new THREE.Mesh(geometry, material);
+        muteButton.position.set(0, 1.4, -0.3); // Position near user's view
+        muteButton.userData.isInteractable = true;
+        muteButton.userData.type = 'muteToggle';
+        scene.add(muteButton);
+        
+        // Add interaction with controllers
+        controller1.addEventListener('selectstart', onControllerSelect);
+        controller2.addEventListener('selectstart', onControllerSelect);
+    }
+    
+    // Function to handle controller selection
+    function onControllerSelect(event) {
+        const controller = event.target;
+        const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+        
+        // Use raycaster to check for intersection with mute button
+        const raycaster = new THREE.Raycaster();
+        const ray = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
+        raycaster.set(controllerPosition, ray.normalize());
+        
+        const intersects = raycaster.intersectObjects([muteButton]);
+        
+        if (intersects.length > 0) {
+            toggleMute();
+        }
+    }
+    
+    // Function to toggle mute state
+    function toggleMute() {
+        isMuted = !isMuted;
+        
+        // Update button color
+        if (isMuted) {
+            muteButton.material.color.set(0xff4444); // Red for muted
+            muteButton.material.emissive.set(0x442222);
+            
+            // Stop audio processing
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.pause();
+            }
+            
+            showSpeechBubble('Microphone muted');
+        } else {
+            muteButton.material.color.set(0x44ff44); // Green for unmuted
+            muteButton.material.emissive.set(0x224422);
+            
+            // Resume audio processing
+            if (mediaRecorder && mediaRecorder.state === 'paused') {
+                mediaRecorder.resume();
+            }
+            
+            showSpeechBubble('Microphone active');
+        }
+    }
+
+
+
+// New function to start audio recording
+function startRecordingContinuous() {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                console.log('Microphone access granted, starting continuous listening');
+                showSpeechBubble('Listening...');
+                
+                // Create media recorder
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                // Handle data available event
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                        
+                        // Process chunks periodically to detect speech
+                        if (audioChunks.length > 5) { // After collecting some audio
+                            processAudioChunks();
+                        }
+                    }
+                };
+                
+                // Handle recording stop event (shouldn't happen unless error)
+                mediaRecorder.onstop = () => {
+                    console.log('Recording stopped unexpectedly, restarting...');
+                    
+                    // Stop all audio tracks to release microphone
+                    stream.getTracks().forEach(track => track.stop());
+                    
+                    // Restart recording after a short delay
+                    setTimeout(() => startRecordingContinuous(), 1000);
+                };
+                
+                // Start recording with timeslices for continuous processing
+                mediaRecorder.start(1000); // 1 second chunks
+            })
+            .catch(err => {
+                console.error('Error accessing microphone:', err);
+                alert('Could not access your microphone. VR chat functionality will be limited.');
+            });
+    }
+    
+    // New function to process audio chunks continuously
+    function processAudioChunks() {
+        // Only process if we have enough audio data and not currently processing
+        if (audioChunks.length < 3 || npcSpeaking) return;
+        
+        // Create a blob from the recorded audio chunks
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        
+        // Reset chunks for next processing
+        audioChunks = [];
+        
+        // Create FormData for server upload
+        const formData = new FormData();
+        formData.append('audio', audioBlob);
+        
+        // Send to speech recognition service
+        sendAudioForRecognition(formData);
+    }
+
+    function sendAudioForRecognition(formData) {
+        // For demo purposes, we'll simulate detecting speech
+        // In a real implementation, you'd analyze audio energy level
+        
+        // Simulate 1 in 10 audio chunks containing speech
+        if (Math.random() < 0.1) {
+            // Simulate random user inputs for demonstration
+            const demoInputs = [
+                "Tell me about your products",
+                "What are the prices?",
+                "Do you have any special deals?",
+                "How does this product work?",
+                "Can I see a demonstration?"
+            ];
+            
+            const simulatedText = demoInputs[Math.floor(Math.random() * demoInputs.length)];
+            handleUserSpeech(simulatedText);
+        }
+    }
+
+        function animate() {
+            renderer.setAnimationLoop(render);
+        }
+        
+        function render() {
+    try {
+        const delta = clock.getDelta();
+        
+        // Update NPC movement to follow user
+        updateNPCMovement();
+        
+        // Update animation mixers if available
+        if (userMixer) userMixer.update(delta);
+        if (npcMixer) npcMixer.update(delta);
+        
+        // Update user avatar position based on camera in VR
+        if (renderer.xr.isPresenting && userAvatar) {
+            // Position user avatar to match camera
+            userAvatar.position.x = camera.position.x;
+            userAvatar.position.z = camera.position.z;
+        }
+        
+        // Update mute button to stay in front of the camera in VR
+        if (muteButton && renderer.xr.isPresenting) {
+            const xr = renderer.xr;
+            const xrCamera = xr.getCamera(camera);
+            
+            if (xrCamera && xrCamera.cameras.length) {
+                const camPos = new THREE.Vector3();
+                const camQuat = new THREE.Quaternion();
+                
+                xrCamera.getWorldPosition(camPos);
+                xrCamera.getWorldQuaternion(camQuat);
+                
+                // Position the button in front and slightly below the camera view
+                const offset = new THREE.Vector3(0, -0.2, -0.5);
+                offset.applyQuaternion(camQuat);
+                
+                muteButton.position.copy(camPos).add(offset);
+                muteButton.quaternion.copy(camQuat);
+            }
+        }
+        
+        renderer.render(scene, camera);
+    } catch (error) {
+        console.error('Error in render function:', error);
+    }
+}
+    </script>
+</body>
+</html>
