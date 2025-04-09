@@ -138,7 +138,7 @@
 
              // Create camera rig (parent object that we'll move)
             cameraRig = new THREE.Group();
-          cameraRig.position.set(0, 0, 3); // Initial position of the rig
+          cameraRig.position.set(0, 0, 0); // Initial position of the rig
           cameraRig.add(camera);
           scene.add(cameraRig);
             
@@ -1001,20 +1001,20 @@ function updateVolumeIndicator() {
             if (thumbstickMoveY !== 0) {
                 moveVector.copy(cameraDirection);
                 moveVector.multiplyScalar(-thumbstickMoveY * moveSpeed);
-                camera.position.add(moveVector);
+                cameraRig.position.add(moveVector);
             }
             
             // Apply strafing movement
             if (thumbstickMoveX !== 0) {
                 moveVector.copy(rightVector);
                 moveVector.multiplyScalar(thumbstickMoveX * moveSpeed);
-                camera.position.add(moveVector);
+                cameraRig.position.add(moveVector);
             }
             
             // Apply turning (rotation around Y axis)
             if (thumbstickTurnX !== 0) {
                 const rotationAngle = thumbstickTurnX * turnSpeed;
-                camera.rotateY(rotationAngle);
+                cameraRig.rotateY(rotationAngle);
             }
         }
         
