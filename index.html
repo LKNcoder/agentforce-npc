@@ -104,6 +104,13 @@
         let volumeIndicator;
         let audioAnalyser;
         let analyserData;
+        let moveSpeed = 0.05;
+          let turnSpeed = 0.03;
+          let moveVector = new THREE.Vector3();
+         let rightController, leftController;
+         let thumbstickMoveX = 0;
+        let thumbstickMoveY = 0;
+        let thumbstickTurnX = 0;
         
         // Initialize and run the application
         init();
@@ -212,25 +219,83 @@
         }
         
         function setupControllers() {
-            // Controller setup for VR
-            controller1 = renderer.xr.getController(0);
-            scene.add(controller1);
-            
-            controller2 = renderer.xr.getController(1);
-            scene.add(controller2);
-            
-            // Controller models
-            const controllerModelFactory = new XRControllerModelFactory();
-            
-            const controllerGrip1 = renderer.xr.getControllerGrip(0);
-            controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-            scene.add(controllerGrip1);
-            
-            const controllerGrip2 = renderer.xr.getControllerGrip(1);
-            controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-            scene.add(controllerGrip2);
+    // Controller setup for VR
+    controller1 = renderer.xr.getController(0);
+    controller1.addEventListener('connected', function(event) {
+        const xrData = event.data;
+        if (xrData.handedness === 'left') {
+            leftController = controller1;
+        } else if (xrData.handedness === 'right') {
+            rightController = controller1;
         }
+    });
+    scene.add(controller1);
+    
+    controller2 = renderer.xr.getController(1);
+    controller2.addEventListener('connected', function(event) {
+        const xrData = event.data;
+        if (xrData.handedness === 'left') {
+            leftController = controller2;
+        } else if (xrData.handedness === 'right') {
+            rightController = controller2;
+        }
+    });
+    scene.add(controller2);
+    
+    // Add thumbstick input listeners
+    window.addEventListener('gamepadconnected', handleGamepadConnected);
+    
+    // Controller models
+    const controllerModelFactory = new XRControllerModelFactory();
+    
+    const controllerGrip1 = renderer.xr.getControllerGrip(0);
+    controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
+    scene.add(controllerGrip1);
+    
+    const controllerGrip2 = renderer.xr.getControllerGrip(1);
+    controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
+    scene.add(controllerGrip2);
+}
 
+function handleGamepadConnected(event) {
+    console.log('Gamepad connected:', event.gamepad);
+}
+
+// Add this new function to process controller inputs
+function processControllerInput() {
+    if (!renderer.xr.isPresenting) return;
+    
+    const session = renderer.xr.getSession();
+    
+    if (!session) return;
+    
+    // Reset movement values
+    thumbstickMoveX = 0;
+    thumbstickMoveY = 0;
+    thumbstickTurnX = 0;
+    
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    
+    for (let i = 0; i < gamepads.length; i++) {
+        const gamepad = gamepads[i];
+        
+        if (gamepad && gamepad.connected) {
+            const axes = gamepad.axes;
+            
+            if (axes && axes.length >= 4) {
+                // Check which controller this is
+                if (gamepad.hand === 'left' || i === 0) {
+                    // Left controller - movement
+                    thumbstickMoveX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0; // X-axis (left/right)
+                    thumbstickMoveY = Math.abs(axes[1]) > 0.1 ? axes[1] : 0; // Y-axis (forward/back)
+                } else if (gamepad.hand === 'right' || i === 1) {
+                    // Right controller - turning
+                    thumbstickTurnX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0; // X-axis (rotate)
+                }
+            }
+        }
+    }
+}
 
         fetch('box.gltf') // Check the simple test file first
     .then(response => {
@@ -892,15 +957,51 @@ function updateVolumeIndicator() {
         function render() {
     try {
         const delta = clock.getDelta();
-               
+        
+        // Process VR controller input for movement
+        processControllerInput();
+        
+        // Apply thumbstick movement
+        if (renderer.xr.isPresenting) {
+            // Get camera direction for movement
+            const cameraDirection = new THREE.Vector3();
+            camera.getWorldDirection(cameraDirection);
+            
+            // Convert to horizontal direction (no flying up/down)
+            cameraDirection.y = 0;
+            cameraDirection.normalize();
+            
+            // Create right vector for strafing
+            const rightVector = new THREE.Vector3();
+            rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0));
+            
+            // Apply forward/backward movement
+            if (thumbstickMoveY !== 0) {
+                moveVector.copy(cameraDirection);
+                moveVector.multiplyScalar(-thumbstickMoveY * moveSpeed);
+                camera.position.add(moveVector);
+            }
+            
+            // Apply strafing movement
+            if (thumbstickMoveX !== 0) {
+                moveVector.copy(rightVector);
+                moveVector.multiplyScalar(thumbstickMoveX * moveSpeed);
+                camera.position.add(moveVector);
+            }
+            
+            // Apply turning (rotation around Y axis)
+            if (thumbstickTurnX !== 0) {
+                const rotationAngle = thumbstickTurnX * turnSpeed;
+                camera.rotateY(rotationAngle);
+            }
+        }
+        
         // Update NPC movement to follow user
         updateNPCMovement();
         
         // Update animation mixers if available
         if (userMixer) userMixer.update(delta);
         if (npcMixer) npcMixer.update(delta);
-
-        updateVolumeIndicator()
         
         // Update user avatar position based on camera in VR
         if (renderer.xr.isPresenting && userAvatar) {
@@ -908,8 +1009,6 @@ function updateVolumeIndicator() {
             userAvatar.position.x = camera.position.x;
             userAvatar.position.z = camera.position.z;
         }
-        
-        
         
         renderer.render(scene, camera);
     } catch (error) {
