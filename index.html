@@ -153,7 +153,7 @@
             
            
 
-            initPlaceholderAvatars();
+            
             
             // Load avatar models
              loadAvatarModels();
@@ -258,8 +258,7 @@
     });
         
     function loadAvatarModels() {
-    // First initialize placeholder avatars so we always have something
-    initPlaceholderAvatars();
+    
     
     console.log('Starting to load avatar models...');
     
@@ -285,6 +284,7 @@
             loadNPCAvatar();
         }
     );
+    }
     
     // Function to load the NPC avatar
     function loadNPCAvatar() {
@@ -324,82 +324,67 @@
     
     // Shared success handler function
     function onModelLoaded(gltf) {
-        console.log('Model loaded successfully:', gltf);
-        try {
-            // Remove placeholder
-            scene.remove(npcAvatar);
-            
-            // Add model to the scene
-            npcAvatar = gltf.scene;
-            npcAvatar.position.set(2, 0.5, 0); // Raised position so not in ground
-            npcAvatar.scale.set(1, 1, 1);
-            npcAvatar.castShadow = true;
-            
-            // Log model details
-            let meshCount = 0;
-            npcAvatar.traverse(function(child) {
-                if (child.isMesh) {
-                    child.castShadow = true;
-                    meshCount++;
-                    console.log(`Found mesh: ${child.name}`);
-                }
-            });
-            console.log(`Total meshes in model: ${meshCount}`);
-            
-            scene.add(npcAvatar);
-            
-            // Set up animation mixer
-            npcMixer = new THREE.AnimationMixer(npcAvatar);
-            
-            // Check if the model has built-in animations
-            if (gltf.animations && gltf.animations.length > 0) {
-                console.log(`Model has ${gltf.animations.length} built-in animations`);
-                gltf.animations.forEach((anim, index) => {
-                    console.log(`Animation ${index}: ${anim.name || 'Unnamed'} (Duration: ${anim.duration}s)`);
-                });
-                
-                // Use the first animation as idle
-                const idleAction = npcMixer.clipAction(gltf.animations[0]);
-                npcAnimations['idle'] = idleAction;
-                idleAction.play();
-                
-                // If there's a second animation, use it for talking
-                if (gltf.animations.length > 1) {
-                    const talkAction = npcMixer.clipAction(gltf.animations[1]);
-                    npcAnimations['talking'] = talkAction;
-                }
-            } else {
-                console.log('No built-in animations found, creating procedural animations');
-                // Load simple procedural animations
-                loadNPCAnimations();
+    console.log('Model loaded successfully:', gltf);
+    try {
+        // Remove placeholder
+        scene.remove(npcAvatar);
+        
+        // Add model to the scene
+        npcAvatar = gltf.scene;
+        npcAvatar.position.set(2, 0, 0); // Position directly on ground
+        npcAvatar.scale.set(1, 1, 1);
+        npcAvatar.castShadow = true;
+        
+        // Log model details
+        let meshCount = 0;
+        npcAvatar.traverse(function(child) {
+            if (child.isMesh) {
+                child.castShadow = true;
+                meshCount++;
+                console.log(`Found mesh: ${child.name}`);
             }
-        } catch (e) {
-            console.error('Error processing model:', e);
-            // Ensure we have the placeholder back if needed
-            initPlaceholderAvatars();
+        });
+        console.log(`Total meshes in model: ${meshCount}`);
+        
+        scene.add(npcAvatar);
+        
+        // Set up animation mixer
+        npcMixer = new THREE.AnimationMixer(npcAvatar);
+        
+        // Check if the model has built-in animations
+        if (gltf.animations && gltf.animations.length > 0) {
+            console.log(`Model has ${gltf.animations.length} built-in animations`);
+            gltf.animations.forEach((anim, index) => {
+                console.log(`Animation ${index}: ${anim.name || 'Unnamed'} (Duration: ${anim.duration}s)`);
+            });
+            
+            // Use the first animation as idle
+            const idleAction = npcMixer.clipAction(gltf.animations[0]);
+            npcAnimations['idle'] = idleAction;
+            idleAction.play();
+            
+            // If there's a second animation, use it for talking
+            if (gltf.animations.length > 1) {
+                const talkAction = npcMixer.clipAction(gltf.animations[1]);
+                npcAnimations['talking'] = talkAction;
+            }
+        } else {
+            console.log('No built-in animations found.');
+            // Don't use procedural animations, as requested
         }
+        
+        // Remove placeholder avatars completely once real model is loaded
+        scene.traverse(object => {
+            if (object.userData && object.userData.isPlaceholder) {
+                scene.remove(object);
+            }
+        });
+    } catch (e) {
+        console.error('Error processing model:', e);
     }
 }
 
-function initPlaceholderAvatars() {
-    // Create simple placeholder avatars until real models are loaded
-    
-    // User avatar placeholder (blue cylinder)
-    const userGeometry = new THREE.CapsuleGeometry(0.2, 1.2, 4, 8);
-    const userMaterial = new THREE.MeshStandardMaterial({ color: 0x0000ff });
-    userAvatar = new THREE.Mesh(userGeometry, userMaterial);
-    userAvatar.position.set(0, userHeight / 2, 0);
-    userAvatar.castShadow = true;
-    scene.add(userAvatar);
-    
-    // NPC avatar placeholder (red cylinder)
-    const npcGeometry = new THREE.CapsuleGeometry(0.2, 1.2, 4, 8);
-    const npcMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
-    npcAvatar = new THREE.Mesh(npcGeometry, npcMaterial);
-    npcAvatar.position.set(2, userHeight / 2, 0);
-    npcAvatar.castShadow = true;
-    scene.add(npcAvatar);
-}
+
 
 function loadNPCAnimations() {
     console.log('Creating procedural animations...');
@@ -634,25 +619,38 @@ function loadNPCAnimations() {
 
 
         function createMuteToggle() {
-        // Create a simple sphere as the mute toggle
-        const geometry = new THREE.SphereGeometry(0.05, 16, 16);
-        const material = new THREE.MeshStandardMaterial({ 
-            color: 0x44ff44,  // Green for unmuted
-            emissive: 0x224422,
-            roughness: 0.3,
-            metalness: 0.8
-        });
+    // Create a box for the mute toggle instead of a sphere
+    const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0x44ff44,  // Green for unmuted
+        emissive: 0x224422,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    
+    muteButton = new THREE.Mesh(geometry, material);
+    
+    // Position it statically in the world instead of attached to camera
+    muteButton.position.set(0, 1.2, -1.5); // Fixed position in the world
+    muteButton.userData.isInteractable = true;
+    muteButton.userData.type = 'muteToggle';
+    
+    // Add text label
+    const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const textGeometry = (typeof TextGeometry !== 'undefined') ? 
+    new TextGeometry('MUTE', { size: 0.05, height: 0.01 }) : 
+    new THREE.BoxGeometry(0.2, 0.05, 0.01);
         
-        muteButton = new THREE.Mesh(geometry, material);
-        muteButton.position.set(0, 1.4, -0.3); // Position near user's view
-        muteButton.userData.isInteractable = true;
-        muteButton.userData.type = 'muteToggle';
-        scene.add(muteButton);
-        
-        // Add interaction with controllers
-        controller1.addEventListener('selectstart', onControllerSelect);
-        controller2.addEventListener('selectstart', onControllerSelect);
-    }
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.set(0, -0.1, 0);
+    muteButton.add(textMesh);
+    
+    scene.add(muteButton);
+    
+    // Add interaction with controllers
+    controller1.addEventListener('selectstart', onControllerSelect);
+    controller2.addEventListener('selectstart', onControllerSelect);
+}
     
     // Function to handle controller selection
     function onControllerSelect(event) {
@@ -805,32 +803,16 @@ function startRecordingContinuous() {
             userAvatar.position.z = camera.position.z;
         }
         
-        // Update mute button to stay in front of the camera in VR
-        if (muteButton && renderer.xr.isPresenting) {
-            const xr = renderer.xr;
-            const xrCamera = xr.getCamera(camera);
-            
-            if (xrCamera && xrCamera.cameras.length) {
-                const camPos = new THREE.Vector3();
-                const camQuat = new THREE.Quaternion();
-                
-                xrCamera.getWorldPosition(camPos);
-                xrCamera.getWorldQuaternion(camQuat);
-                
-                // Position the button in front and slightly below the camera view
-                const offset = new THREE.Vector3(0, -0.2, -0.5);
-                offset.applyQuaternion(camQuat);
-                
-                muteButton.position.copy(camPos).add(offset);
-                muteButton.quaternion.copy(camQuat);
-            }
-        }
+        // We've removed the code that made the mute button follow the camera
+        // muteButton now stays in its fixed world position
         
         renderer.render(scene, camera);
     } catch (error) {
         console.error('Error in render function:', error);
     }
 }
+        
+     
     </script>
 </body>
 </html>
