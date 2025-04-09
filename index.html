@@ -104,8 +104,8 @@
         let volumeIndicator;
         let audioAnalyser;
         let analyserData;
-        let moveSpeed = 0.05;
-          let turnSpeed = 0.03;
+        let moveSpeed = 0.15;
+          let turnSpeed = 0.05;
           let moveVector = new THREE.Vector3();
          let rightController, leftController;
          let thumbstickMoveX = 0;
@@ -144,7 +144,11 @@
             document.body.appendChild(renderer.domElement);
             
             // Add VR button
-            document.body.appendChild(VRButton.createButton(renderer));
+            document.body.appendChild(
+            VRButton.createButton(renderer, {
+             optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
+            })
+            );
             
             // Set up lighting
             setupLighting();
@@ -286,11 +290,11 @@ function processControllerInput() {
                 // Check which controller this is
                 if (gamepad.hand === 'left' || i === 0) {
                     // Left controller - movement
-                    thumbstickMoveX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0; // X-axis (left/right)
-                    thumbstickMoveY = Math.abs(axes[1]) > 0.1 ? axes[1] : 0; // Y-axis (forward/back)
+                    thumbstickMoveX = Math.abs(axes[0]) > 0.05 ? axes[0] : 0; // X-axis (left/right)
+                    thumbstickMoveY = Math.abs(axes[1]) > 0.05 ? axes[1] : 0; // Y-axis (forward/back)
                 } else if (gamepad.hand === 'right' || i === 1) {
                     // Right controller - turning
-                    thumbstickTurnX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0; // X-axis (rotate)
+                    thumbstickTurnX = Math.abs(axes[0]) > 0.05 ? axes[0] : 0; // X-axis (rotate)
                 }
             }
         }
