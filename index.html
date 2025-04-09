@@ -101,6 +101,9 @@
         let isMuted = false;
         let muteButton;
         let gltfLoader;
+        let volumeIndicator;
+        let audioAnalyser;
+        let analyserData;
         
         // Initialize and run the application
         init();
@@ -564,8 +567,8 @@ function loadNPCAnimations() {
             // This would be replaced with actual animation control for the NPC avatar
             
             // Wiggle the NPC for now
-            const intensity = 0.05;
-            npcAvatar.position.y = userHeight / 2 + Math.sin(clock.getElapsedTime() * 10) * intensity;
+           
+            
         }
         
         function updateNPCMovement() {
@@ -607,20 +610,52 @@ function loadNPCAnimations() {
         }
         
         function setupAudioCapture() {
-            // Initialize Web Audio API context
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            } catch (e) {
-                console.error('Web Audio API is not supported in this browser:', e);
-                alert('Audio is not fully supported in this browser. Some features may not work.');
-            }
-        }
+    // Initialize Web Audio API context
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Create volume indicator
+        createVolumeIndicator();
+    } catch (e) {
+        console.error('Web Audio API is not supported in this browser:', e);
+        alert('Audio is not fully supported in this browser. Some features may not work.');
+    }
+}
 
 
 
+function createVolumeIndicator() {
+    // Create container for volume bar
+    const container = new THREE.Group();
+    
+    // Create background for volume meter
+    const bgGeometry = new THREE.BoxGeometry(0.05, 0.3, 0.01);
+    const bgMaterial = new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.5 });
+    const background = new THREE.Mesh(bgGeometry, bgMaterial);
+    container.add(background);
+    
+    // Create the actual volume indicator bar
+    const barGeometry = new THREE.BoxGeometry(0.03, 0.01, 0.015);
+    const barMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+    volumeIndicator = new THREE.Mesh(barGeometry, barMaterial);
+    volumeIndicator.position.y = -0.145; // Start at bottom
+    container.add(volumeIndicator);
+    
+    // Add text label
+    const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const textGeometry = new THREE.BoxGeometry(0.1, 0.03, 0.01);
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.set(0, -0.2, 0);
+    container.add(textMesh);
+    
+    // Position the entire container
+    container.position.set(0.2, 1.2, -1.5); // Next to mute button
+    scene.add(container);
+}
 
-        function createMuteToggle() {
-    // Create a box for the mute toggle instead of a sphere
+
+function createMuteToggle() {
+    // Create a box for the mute toggle
     const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
     const material = new THREE.MeshStandardMaterial({ 
         color: 0x44ff44,  // Green for unmuted
@@ -631,44 +666,78 @@ function loadNPCAnimations() {
     
     muteButton = new THREE.Mesh(geometry, material);
     
-    // Position it statically in the world instead of attached to camera
-    muteButton.position.set(0, 1.2, -1.5); // Fixed position in the world
+    // Position it statically in the world
+    muteButton.position.set(-0.2, 1.2, -1.5);
     muteButton.userData.isInteractable = true;
     muteButton.userData.type = 'muteToggle';
     
-    // Add text label
-    const textMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const textGeometry = (typeof TextGeometry !== 'undefined') ? 
-    new TextGeometry('MUTE', { size: 0.05, height: 0.01 }) : 
-    new THREE.BoxGeometry(0.2, 0.05, 0.01);
-        
-    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-    textMesh.position.set(0, -0.1, 0);
-    muteButton.add(textMesh);
+    // Add text label - better implementation for "MUTE" text
+    const muteTextMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const muteTextGeometry = new THREE.BoxGeometry(0.12, 0.03, 0.01);
+    const muteTextMesh = new THREE.Mesh(muteTextGeometry, muteTextMaterial);
+    muteTextMesh.position.set(0, -0.1, 0);
+    muteButton.add(muteTextMesh);
     
     scene.add(muteButton);
     
-    // Add interaction with controllers
+    // Create quit button
+    const quitGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    const quitMaterial = new THREE.MeshStandardMaterial({
+        color: 0xff8844,  // Orange for quit
+        emissive: 0x442211,
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    
+    const quitButton = new THREE.Mesh(quitGeometry, quitMaterial);
+    quitButton.position.set(-0.4, 1.2, -1.5);
+    quitButton.userData.isInteractable = true;
+    quitButton.userData.type = 'quitButton';
+    
+    // Add text label for QUIT
+    const quitTextMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const quitTextGeometry = new THREE.BoxGeometry(0.12, 0.03, 0.01);
+    const quitTextMesh = new THREE.Mesh(quitTextGeometry, quitTextMaterial);
+    quitTextMesh.position.set(0, -0.1, 0);
+    quitButton.add(quitTextMesh);
+    
+    scene.add(quitButton);
+    
+    // Add interaction with controllers for both buttons
     controller1.addEventListener('selectstart', onControllerSelect);
     controller2.addEventListener('selectstart', onControllerSelect);
 }
     
     // Function to handle controller selection
     function onControllerSelect(event) {
-        const controller = event.target;
-        const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+    const controller = event.target;
+    const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+    
+    // Use raycaster to check for intersection with interactive objects
+    const raycaster = new THREE.Raycaster();
+    const ray = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
+    raycaster.set(controllerPosition, ray.normalize());
+    
+    // Get all interactive objects
+    const interactiveObjects = [];
+    scene.traverse((object) => {
+        if (object.userData && object.userData.isInteractable) {
+            interactiveObjects.push(object);
+        }
+    });
+    
+    const intersects = raycaster.intersectObjects(interactiveObjects);
+    
+    if (intersects.length > 0) {
+        const selectedObject = intersects[0].object;
         
-        // Use raycaster to check for intersection with mute button
-        const raycaster = new THREE.Raycaster();
-        const ray = new THREE.Vector3(0, 0, -1).applyQuaternion(controller.quaternion);
-        raycaster.set(controllerPosition, ray.normalize());
-        
-        const intersects = raycaster.intersectObjects([muteButton]);
-        
-        if (intersects.length > 0) {
+        if (selectedObject.userData.type === 'muteToggle') {
             toggleMute();
+        } else if (selectedObject.userData.type === 'quitButton') {
+            quitApplication();
         }
     }
+}
     
     // Function to toggle mute state
     function toggleMute() {
@@ -702,46 +771,80 @@ function loadNPCAnimations() {
 
 // New function to start audio recording
 function startRecordingContinuous() {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                console.log('Microphone access granted, starting continuous listening');
-                showSpeechBubble('Listening...');
-                
-                // Create media recorder
-                mediaRecorder = new MediaRecorder(stream);
-                audioChunks = [];
-                
-                // Handle data available event
-                mediaRecorder.ondataavailable = (event) => {
-                    if (event.data.size > 0) {
-                        audioChunks.push(event.data);
-                        
-                        // Process chunks periodically to detect speech
-                        if (audioChunks.length > 5) { // After collecting some audio
-                            processAudioChunks();
-                        }
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            console.log('Microphone access granted, starting continuous listening');
+            showSpeechBubble('Listening...');
+            
+            // Create media recorder
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
+            // Setup audio analyzer for volume detection
+            const audioSource = audioContext.createMediaStreamSource(stream);
+            audioAnalyser = audioContext.createAnalyser();
+            audioAnalyser.fftSize = 256;
+            audioSource.connect(audioAnalyser);
+            
+            analyserData = new Uint8Array(audioAnalyser.frequencyBinCount);
+            
+            // Handle data available event
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                    
+                    // Process chunks periodically to detect speech
+                    if (audioChunks.length > 5) { 
+                        processAudioChunks();
                     }
-                };
-                
-                // Handle recording stop event (shouldn't happen unless error)
-                mediaRecorder.onstop = () => {
-                    console.log('Recording stopped unexpectedly, restarting...');
-                    
-                    // Stop all audio tracks to release microphone
-                    stream.getTracks().forEach(track => track.stop());
-                    
-                    // Restart recording after a short delay
-                    setTimeout(() => startRecordingContinuous(), 1000);
-                };
-                
-                // Start recording with timeslices for continuous processing
-                mediaRecorder.start(1000); // 1 second chunks
-            })
-            .catch(err => {
-                console.error('Error accessing microphone:', err);
-                alert('Could not access your microphone. VR chat functionality will be limited.');
-            });
+                }
+            };
+            
+            // Rest of the function remains the same...
+            mediaRecorder.onstop = () => {
+                console.log('Recording stopped unexpectedly, restarting...');
+                stream.getTracks().forEach(track => track.stop());
+                setTimeout(() => startRecordingContinuous(), 1000);
+            };
+            
+            mediaRecorder.start(1000);
+        })
+        .catch(err => {
+            console.error('Error accessing microphone:', err);
+            alert('Could not access your microphone. VR chat functionality will be limited.');
+        });
+}
+
+function updateVolumeIndicator() {
+    if (!audioAnalyser || !volumeIndicator || isMuted) return;
+    
+    // Get volume data
+    audioAnalyser.getByteFrequencyData(analyserData);
+    
+    // Calculate average volume
+    let sum = 0;
+    for (let i = 0; i < analyserData.length; i++) {
+        sum += analyserData[i];
     }
+    const average = sum / analyserData.length;
+    
+    // Scale for visualization (0 to 0.3)
+    const scaledHeight = Math.min(0.29, (average / 255) * 0.3);
+    
+    // Update indicator
+    volumeIndicator.scale.y = scaledHeight * 10; // Scale height based on volume
+    volumeIndicator.position.y = -0.145 + scaledHeight / 2; // Move up as it grows
+    
+    // Change color based on volume
+    if (average > 100) {
+        volumeIndicator.material.color.set(0xff0000); // Red for loud
+    } else if (average > 50) {
+        volumeIndicator.material.color.set(0xffff00); // Yellow for medium
+    } else {
+        volumeIndicator.material.color.set(0x00ff00); // Green for soft
+    }
+}
+
     
     // New function to process audio chunks continuously
     function processAudioChunks() {
@@ -789,13 +892,15 @@ function startRecordingContinuous() {
         function render() {
     try {
         const delta = clock.getDelta();
-        
+               
         // Update NPC movement to follow user
         updateNPCMovement();
         
         // Update animation mixers if available
         if (userMixer) userMixer.update(delta);
         if (npcMixer) npcMixer.update(delta);
+
+        updateVolumeIndicator()
         
         // Update user avatar position based on camera in VR
         if (renderer.xr.isPresenting && userAvatar) {
@@ -804,8 +909,7 @@ function startRecordingContinuous() {
             userAvatar.position.z = camera.position.z;
         }
         
-        // We've removed the code that made the mute button follow the camera
-        // muteButton now stays in its fixed world position
+        
         
         renderer.render(scene, camera);
     } catch (error) {
@@ -813,7 +917,39 @@ function startRecordingContinuous() {
     }
 }
         
-     
+function quitApplication() {
+    showSpeechBubble('Exiting application...');
+    
+    // Fade to black effect
+    const overlay = document.createElement('div');
+    overlay.style.position = 'fixed';
+    overlay.style.top = 0;
+    overlay.style.left = 0;
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.backgroundColor = 'black';
+    overlay.style.opacity = 0;
+    overlay.style.transition = 'opacity 1s';
+    overlay.style.zIndex = 1000;
+    document.body.appendChild(overlay);
+    
+    // Fade in then exit
+    setTimeout(() => {
+        overlay.style.opacity = 1;
+        
+        // After fade completes, close the application
+        setTimeout(() => {
+            // For browser context, show message and redirect
+            if (window.confirm('Exit application?')) {
+                window.close(); // Might not work in most browsers for security reasons
+                
+                // Fallback if window.close() fails
+                window.location.href = 'about:blank';
+            }
+        }, 1000);
+    }, 10);
+}
+
     </script>
 </body>
 </html>
