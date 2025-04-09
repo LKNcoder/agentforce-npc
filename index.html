@@ -111,6 +111,7 @@
          let thumbstickMoveX = 0;
         let thumbstickMoveY = 0;
         let thumbstickTurnX = 0;
+        let cameraRig;
         
         // Initialize and run the application
         init();
@@ -133,7 +134,13 @@
             
             // Initialize camera
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, userHeight, 3);
+            camera.position.set(0, userHeight, 0);
+
+             // Create camera rig (parent object that we'll move)
+            cameraRig = new THREE.Group();
+          cameraRig.position.set(0, 0, 3); // Initial position of the rig
+          cameraRig.add(camera);
+          scene.add(cameraRig);
             
             // Set up renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -964,6 +971,11 @@ function updateVolumeIndicator() {
         
         // Process VR controller input for movement
         processControllerInput();
+
+          // Update the volume indicator if present
+          if (typeof updateVolumeIndicator === 'function') {
+            updateVolumeIndicator();
+        }
         
         // Apply thumbstick movement
         if (renderer.xr.isPresenting) {
@@ -978,6 +990,12 @@ function updateVolumeIndicator() {
             // Create right vector for strafing
             const rightVector = new THREE.Vector3();
             rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0));
+
+            // Debug position occasionally
+            if (Math.floor(clock.getElapsedTime() * 10) % 300 === 0) {
+                console.log('Thumbsticks:', thumbstickMoveX, thumbstickMoveY, thumbstickTurnX);
+                console.log('Rig position:', cameraRig.position.x, cameraRig.position.y, cameraRig.position.z);
+            }
             
             // Apply forward/backward movement
             if (thumbstickMoveY !== 0) {
