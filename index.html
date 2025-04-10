@@ -453,6 +453,8 @@ function processControllerInput() {
             console.log('No built-in animations found.');
             // Don't use procedural animations, as requested
         }
+
+        loadNPCAnimations();
         
         // Remove placeholder avatars completely once real model is loaded
         scene.traverse(object => {
