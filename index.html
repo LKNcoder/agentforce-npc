@@ -310,29 +310,29 @@ function processControllerInput() {
     }
 }
 
-        fetch('box.gltf') // Check the simple test file first
+        fetch('box.glb') // Check the simple test file first
     .then(response => {
         if (!response.ok) {
             throw new Error(`HTTP error, status = ${response.status}`);
         }
-        console.log('Test GLTF file exists');
+        console.log('Test GLB file exists');
         return true;
     })
     .then(() => {
-        // If box.gltf exists, check the npc avatar file
-        return fetch('npc-avatar.gltf');
+        // If box.glb exists, check the npc avatar file
+        return fetch('npc-avatar.glb');
     })
     .then(response => {
         if (!response.ok) {
             throw new Error(`HTTP error, status = ${response.status}`);
         }
-        console.log('NPC Avatar GLTF file exists');
+        console.log('NPC Avatar GLB file exists');
         return response.blob();
     })
     .then(blob => {
-        console.log('GLTF file size:', blob.size, 'bytes');
+        console.log('GLB file size:', blob.size, 'bytes');
         if (blob.size < 1000) {
-            console.warn('Warning: GLTF file is suspiciously small!');
+            console.warn('Warning: GLB file is suspiciously small!');
         }
     })
     .catch(error => {
@@ -353,7 +353,7 @@ function processControllerInput() {
     // Rest of your loading code remains the same...
     console.log('Loading test box model...');
     gltfLoader.load(
-        'box.gltf',
+        'box.glb',
         function(gltf) {
             console.log('Test box loaded successfully!');
             loadNPCAvatar();
@@ -370,9 +370,9 @@ function processControllerInput() {
     
     // Function to load the NPC avatar
     function loadNPCAvatar() {
-        console.log('Attempting to load NPC avatar GLTF...');
+        console.log('Attempting to load NPC avatar GLB...');
         gltfLoader.load(
-            'npc-avatar.gltf',
+            'npc-avatar.glb',
             onModelLoaded,
             function(xhr) {
                 console.log('NPC model load progress:', (xhr.loaded / xhr.total * 100) + '%');
@@ -479,10 +479,10 @@ function loadNPCAnimations() {
         return;
     }
     
-     // Load external animations from animations.gltf
+     // Load external animations from animations.glb
      console.log('Attempting to load animations from animations.gltf');
     gltfLoader.load(
-        'animations.gltf',
+        'animations.glb',
         function(gltf) {
             console.log(`Loaded ${gltf.animations.length} external animations`);
             
