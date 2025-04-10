@@ -993,30 +993,10 @@ function updateVolumeIndicator() {
         const time = clock.getElapsedTime();
 
 
-  // Test movement - makes the camera rig move in a circle automatically
-  if (renderer.xr.isPresenting) {
-            // Simple oscillating movement
-            const amplitude = 1.0; // 1 meter movement range
-            const frequency = 0.2; // Speed of oscillation
-            
-            // Circle motion
-            cameraRig.position.x = Math.sin(time * frequency) * amplitude;
-            cameraRig.position.z = Math.cos(time * frequency) * amplitude;
-            
-            // Log position occasionally
-            if (Math.floor(time * 10) % 100 === 0) {
-                console.log('TEST MOVEMENT: Rig position:', 
-                    cameraRig.position.x.toFixed(2), 
-                    cameraRig.position.y.toFixed(2), 
-                    cameraRig.position.z.toFixed(2)
-                );
-            }
-        }
-
-
+ 
         
         // Process VR controller input for movement
-      //  processControllerInput();
+        processControllerInput();
 
         if (thumbstickMoveX !== 0 || thumbstickMoveY !== 0 || thumbstickTurnX !== 0) {
         console.log('Rig position after movement:', cameraRig.position.x, cameraRig.position.y, cameraRig.position.z);
