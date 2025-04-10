@@ -142,6 +142,9 @@
           cameraRig.position.set(0, 0, 0); // Initial position of the rig
           cameraRig.add(camera);
           scene.add(cameraRig);
+
+            // Add this line here to create the movement indicator
+    const movementIndicator = createMovementIndicator();
             
 
             // Set up renderer
@@ -988,10 +991,8 @@ function updateVolumeIndicator() {
         function render() {
     try {
         const delta = clock.getDelta();
-       
-       
+             
         const time = clock.getElapsedTime();
-
 
  
         
@@ -1066,6 +1067,20 @@ function updateVolumeIndicator() {
     } catch (error) {
         console.error('Error in render function:', error);
     }
+}
+
+function createMovementIndicator() {
+    // Create a visual indicator showing the last movement direction
+    const geometry = new THREE.ConeGeometry(0.2, 0.5, 8);
+    geometry.rotateX(Math.PI / 2); // Point forward
+    const material = new THREE.MeshBasicMaterial({ 
+        color: 0xff0000,
+        wireframe: true
+    });
+    const indicator = new THREE.Mesh(geometry, material);
+    indicator.position.set(0, 0.1, -0.5); // Slightly above ground, in front
+    cameraRig.add(indicator);
+    return indicator;
 }
         
 function quitApplication() {
