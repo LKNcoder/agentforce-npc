@@ -993,62 +993,79 @@ function updateVolumeIndicator() {
     try {
         const delta = clock.getDelta();
              
-        const time = clock.getElapsedTime();
-
- 
-        
-        // Process VR controller input for movement
-        processControllerInput();
-
-        if (thumbstickMoveX !== 0 || thumbstickMoveY !== 0 || thumbstickTurnX !== 0) {
-        console.log('Rig position after movement:', cameraRig.position.x, cameraRig.position.y, cameraRig.position.z);
-}
+          // CRITICAL FIX: Process VR controller input 
+          if (renderer.xr.isPresenting) {
+            // Use direct gamepad access instead of the complex system
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            
+            // Force-move on ANY gamepad input
+            for (let i = 0; i < gamepads.length; i++) {
+                const gamepad = gamepads[i];
+                if (gamepad && gamepad.connected && gamepad.axes && gamepad.axes.length >= 2) {
+                    // Get first two axes on any connected gamepad
+                    const moveX = Math.abs(gamepad.axes[0]) > 0.1 ? gamepad.axes[0] : 0;
+                    const moveY = Math.abs(gamepad.axes[1]) > 0.1 ? gamepad.axes[1] : 0;
+                    
+                    if (moveX !== 0 || moveY !== 0) {
+                        // Log every detected movement input
+                        console.log(`MOVEMENT DETECTED on gamepad ${i}: x=${moveX.toFixed(2)}, y=${moveY.toFixed(2)}`);
+                        
+                        // Get camera direction
+                        const direction = new THREE.Vector3(0, 0, -1);
+                        direction.applyQuaternion(camera.quaternion);
+                        direction.y = 0;
+                        direction.normalize();
+                        
+                        // Get right vector
+                        const right = new THREE.Vector3(1, 0, 0);
+                        right.applyQuaternion(camera.quaternion);
+                        right.normalize();
+                        
+                        // Apply extreme movement (0.5 unit per frame)
+                        const moveFactor = 0.5;
+                        
+                        // Forward/backward
+                        if (moveY !== 0) {
+                            cameraRig.position.x -= direction.x * moveY * moveFactor;
+                            cameraRig.position.z -= direction.z * moveY * moveFactor;
+                            console.log('MOVING F/B:', cameraRig.position.toArray());
+                        }
+                        
+                        // Left/right
+                        if (moveX !== 0) {
+                            cameraRig.position.x += right.x * moveX * moveFactor;
+                            cameraRig.position.z += right.z * moveX * moveFactor;
+                            console.log('MOVING L/R:', cameraRig.position.toArray());
+                        }
+                        
+                        // Make the movement indicator super obvious
+                        if (movementIndicator) {
+                            movementIndicator.scale.set(1, 1, Math.abs(moveY) * 5 + 1);
+                            movementIndicator.material.wireframe = false;
+                            movementIndicator.material.color.set(0x00ff00);
+                        }
+                    }
+                    
+                    // Check for rotation on right thumbstick (typically axes 2 and 3)
+                    if (gamepad.axes.length >= 4) {
+                        const turnX = Math.abs(gamepad.axes[2]) > 0.1 ? gamepad.axes[2] : 0;
+                        if (turnX !== 0) {
+                            // Apply a very obvious rotation
+                            cameraRig.rotateY(-turnX * 0.1);
+                            console.log('TURNING:', turnX);
+                        }
+                    }
+                }
+            }
+        }
+       
 
           // Update the volume indicator if present
           if (typeof updateVolumeIndicator === 'function') {
             updateVolumeIndicator();
         }
         
-        // Apply thumbstick movement
-        if (renderer.xr.isPresenting) {
-            // Get camera direction for movement
-            const cameraDirection = new THREE.Vector3();
-            camera.getWorldDirection(cameraDirection);
-            
-            // Convert to horizontal direction (no flying up/down)
-            cameraDirection.y = 0;
-            cameraDirection.normalize();
-            
-            // Create right vector for strafing
-            const rightVector = new THREE.Vector3();
-            rightVector.crossVectors(cameraDirection, new THREE.Vector3(0, 1, 0));
-
-            // Debug position occasionally
-            if (Math.floor(clock.getElapsedTime() * 10) % 300 === 0) {
-                console.log('Thumbsticks:', thumbstickMoveX, thumbstickMoveY, thumbstickTurnX);
-                console.log('Rig position:', cameraRig.position.x, cameraRig.position.y, cameraRig.position.z);
-            }
-            
-            // Apply forward/backward movement
-            if (thumbstickMoveY !== 0) {
-                moveVector.copy(cameraDirection);
-                moveVector.multiplyScalar(-thumbstickMoveY * moveSpeed);
-                cameraRig.position.add(moveVector);
-            }
-            
-            // Apply strafing movement
-            if (thumbstickMoveX !== 0) {
-                moveVector.copy(rightVector);
-                moveVector.multiplyScalar(thumbstickMoveX * moveSpeed);
-                cameraRig.position.add(moveVector);
-            }
-            
-            // Apply turning (rotation around Y axis)
-            if (thumbstickTurnX !== 0) {
-                const rotationAngle = thumbstickTurnX * turnSpeed;
-                cameraRig.rotateY(rotationAngle);
-            }
-        }
+      
         
         // Update NPC movement to follow user
         updateNPCMovement();
@@ -1071,16 +1088,24 @@ function updateVolumeIndicator() {
 }
 
 function createMovementIndicator() {
-    // Create a visual indicator showing the last movement direction
-    const geometry = new THREE.ConeGeometry(0.2, 0.5, 8);
+    // Create a MUCH more visible indicator
+    const geometry = new THREE.ConeGeometry(0.3, 1.0, 8);
     geometry.rotateX(Math.PI / 2); // Point forward
     const material = new THREE.MeshBasicMaterial({ 
-        color: 0xff0000,
-        wireframe: true
+        color: 0xff00ff, // Bright pink
+        wireframe: false  // Solid
     });
     const indicator = new THREE.Mesh(geometry, material);
-    indicator.position.set(0, 0.1, -0.5); // Slightly above ground, in front
+    indicator.position.set(0, 0.1, -1.0); // Much further in front
     cameraRig.add(indicator);
+    
+    // Add a sphere at the origin point for reference
+    const sphereGeo = new THREE.SphereGeometry(0.1, 16, 16);
+    const sphereMat = new THREE.MeshBasicMaterial({color: 0xffff00});
+    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
+    sphere.position.set(0, 0, 0);
+    cameraRig.add(sphere);
+    
     return indicator;
 }
         
