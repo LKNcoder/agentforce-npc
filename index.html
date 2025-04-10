@@ -113,6 +113,7 @@
         let thumbstickMoveY = 0;
         let thumbstickTurnX = 0;
         let cameraRig;
+        let movementIndicator; 
         
         // Initialize and run the application
         init();
@@ -144,7 +145,7 @@
           scene.add(cameraRig);
 
             // Add this line here to create the movement indicator
-    const movementIndicator = createMovementIndicator();
+           movementIndicator = createMovementIndicator();
             
 
             // Set up renderer
