@@ -7,7 +7,7 @@
     <style>
         body { margin: 0; padding: 0; overflow: hidden; }
         canvas { display: block; }
-        #vrButton {
+        #enterVRButton {
             position: absolute;
             bottom: 20px;
             left: 50%;
@@ -24,12 +24,12 @@
     </style>
 </head>
 <body>
-    <button id="vrButton">Enter VR</button>
+    <!-- Note: VR button will be created by Three.js -->
 
     <script type="module">
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
-        import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/VRButton.js';
-        import { XRControllerModelFactory } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/webxr/XRControllerModelFactory.js';
+        import * as THREE from 'https://unpkg.com/three@0.160.0/build/three.module.js';
+        import { VRButton } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/VRButton.js';
+        import { XRControllerModelFactory } from 'https://unpkg.com/three@0.160.0/examples/jsm/webxr/XRControllerModelFactory.js';
         
         let camera, scene, renderer;
         let controller1, controller2;
@@ -95,10 +95,8 @@
             renderer.xr.enabled = true;
             document.body.appendChild(renderer.domElement);
             
-            // VR Button
-            document.getElementById('vrButton').addEventListener('click', function() {
-                document.body.appendChild(VRButton.createButton(renderer));
-            });
+            // VR Button - directly append the VR button to the body
+            document.body.appendChild(VRButton.createButton(renderer));
             
             // Controllers
             const controllerModelFactory = new XRControllerModelFactory();
