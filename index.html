@@ -78,6 +78,7 @@
         import { VRButton } from 'three/addons/webxr/VRButton.js';
         import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
         import { FBXLoader } from 'three/addons/loaders/FBXLoader.js';
+        import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
         // Global variables
         let camera, scene, renderer, clock;
@@ -338,21 +339,22 @@ function processControllerInput() {
     });
         
     function loadAvatarModels() {
-    
-    
     console.log('Starting to load avatar models...');
     
-    // Then try loading the actual models
-    gltfLoader = new GLTFLoader(loadingManager);
+    // Create and configure DRACOLoader first
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
     
-    // Start by testing with the simple box to verify the loader works
+    // Then create the GLTFLoader and add the DRACOLoader to it
+    gltfLoader = new GLTFLoader(loadingManager);
+    gltfLoader.setDRACOLoader(dracoLoader);
+    
+    // Rest of your loading code remains the same...
     console.log('Loading test box model...');
     gltfLoader.load(
         'box.gltf',
         function(gltf) {
             console.log('Test box loaded successfully!');
-            
-            // Now try loading the actual avatar
             loadNPCAvatar();
         },
         function(xhr) {
@@ -360,11 +362,10 @@ function processControllerInput() {
         },
         function(error) {
             console.error('Error loading test box:', error);
-            // Try loading the avatar anyway
             loadNPCAvatar();
         }
     );
-    }
+}
     
     // Function to load the NPC avatar
     function loadNPCAvatar() {
@@ -475,65 +476,51 @@ function loadNPCAnimations() {
         return;
     }
     
-    try {
-        // Find a suitable target for animations
-        let animationTarget = '.'; // Default to root
-        
-        // Try to find the character's head or body for targeting
-        npcAvatar.traverse(function(object) {
-            if (object.isMesh) {
-                const name = object.name.toLowerCase();
-                if (name.includes('head') || name.includes('face')) {
-                    console.log('Found head mesh for animations:', object.name);
-                    animationTarget = object.name;
-                    return;
-                } else if (name.includes('body') || name.includes('torso')) {
-                    console.log('Found body mesh for animations:', object.name);
-                    animationTarget = object.name;
+     // Load external animations from animations.gltf
+     console.log('Attempting to load animations from animations.gltf');
+    gltfLoader.load(
+        'animations.gltf',
+        function(gltf) {
+            console.log(`Loaded ${gltf.animations.length} external animations`);
+            
+            // Process each animation
+            gltf.animations.forEach((anim, index) => {
+                const animName = anim.name || `anim_${index}`;
+                console.log(`External animation ${index}: ${animName} (Duration: ${anim.duration}s)`);
+                
+                // Create an action for this animation
+                const action = npcMixer.clipAction(anim);
+                
+                // Store in our animations dictionary
+                npcAnimations[animName] = action;
+                
+                // If this is the first animation and we don't have an idle animation yet, use it
+                if (index === 0 && !npcAnimations['idle']) {
+                    console.log('Setting first external animation as idle');
+                    npcAnimations['idle'] = action;
+                    action.play();
                 }
-            }
-        });
-        
-        console.log('Using animation target:', animationTarget);
-        
-        // Create a very simple animation for idle
-        const idleClip = THREE.AnimationClip.parse({
-            name: 'idle',
-            duration: 4,
-            tracks: [
-                new THREE.NumberKeyframeTrack(
-                    `${animationTarget}.position[y]`, 
-                    [0, 2, 4], 
-                    [0.5, 0.53, 0.5]  // Gentle up and down movement
-                )
-            ]
-        });
-        
-        const idleAction = npcMixer.clipAction(idleClip);
-        npcAnimations['idle'] = idleAction;
-        idleAction.setLoop(THREE.LoopRepeat);
-        idleAction.play();
-        console.log('Idle animation created and playing');
-        
-        // Create a simple animation for talking
-        const talkingClip = THREE.AnimationClip.parse({
-            name: 'talking',
-            duration: 0.5,
-            tracks: [
-                new THREE.NumberKeyframeTrack(
-                    `${animationTarget}.position[y]`, 
-                    [0, 0.25, 0.5], 
-                    [0.5, 0.55, 0.5]  // Faster up and down movement for talking
-                )
-            ]
-        });
-        
-        const talkingAction = npcMixer.clipAction(talkingClip);
-        npcAnimations['talking'] = talkingAction;
-        console.log('Talking animation created');
-    } catch (e) {
-        console.error('Error creating procedural animations:', e);
-    }
+                
+                // If this animation name contains "talk" or "speak" and we don't have a talking animation yet,
+                // use it for the talking animation
+                if ((animName.toLowerCase().includes('talk') || 
+                     animName.toLowerCase().includes('speak')) && 
+                    !npcAnimations['talking']) {
+                    console.log(`Setting "${animName}" as talking animation`);
+                    npcAnimations['talking'] = action;
+                }
+            });
+            
+            console.log('Available animations:', Object.keys(npcAnimations));
+        },
+        function(xhr) {
+            console.log('External animations load progress:', (xhr.loaded / xhr.total * 100) + '%');
+        },
+        function(error) {
+            console.error('Error loading external animations:', error);
+            console.log('No animations loaded - NPC will remain motionless');
+        }
+    );
 }
         
         function setupSpeechRecognition() {
@@ -747,12 +734,8 @@ function createMuteToggle() {
     muteButton.userData.isInteractable = true;
     muteButton.userData.type = 'muteToggle';
     
-    // Add text label - better implementation for "MUTE" text
-    const muteTextMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const muteTextGeometry = new THREE.BoxGeometry(0.12, 0.03, 0.01);
-    const muteTextMesh = new THREE.Mesh(muteTextGeometry, muteTextMaterial);
-    muteTextMesh.position.set(0, -0.1, 0);
-    muteButton.add(muteTextMesh);
+    // Add canvas-based text label instead of box geometry
+    createTextLabel("MUTE", muteButton, 0, -0.1, 0.01);
     
     scene.add(muteButton);
     
@@ -770,12 +753,8 @@ function createMuteToggle() {
     quitButton.userData.isInteractable = true;
     quitButton.userData.type = 'quitButton';
     
-    // Add text label for QUIT
-    const quitTextMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const quitTextGeometry = new THREE.BoxGeometry(0.12, 0.03, 0.01);
-    const quitTextMesh = new THREE.Mesh(quitTextGeometry, quitTextMaterial);
-    quitTextMesh.position.set(0, -0.1, 0);
-    quitButton.add(quitTextMesh);
+    // Add canvas-based text label instead of box geometry
+    createTextLabel("QUIT", quitButton, 0, -0.1, 0.01);
     
     scene.add(quitButton);
     
@@ -843,6 +822,44 @@ function createMuteToggle() {
         }
     }
 
+    function createTextLabel(text, parent, x, y, z) {
+    // Create canvas for text rendering
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 128;
+    canvas.height = 64;
+    
+    // Clear canvas with transparent background
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw text
+    context.fillStyle = 'white';  // Background color
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    context.font = 'bold 28px Arial';
+    context.fillStyle = 'black';  // Text color
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText(text, canvas.width/2, canvas.height/2);
+    
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    
+    // Create material with the texture
+    const material = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true
+    });
+    
+    // Create plane geometry for the label
+    const geometry = new THREE.PlaneGeometry(0.12, 0.06);
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    
+    // Add to parent
+    parent.add(mesh);
+    return mesh;
+}   
 
 
 // New function to start audio recording
