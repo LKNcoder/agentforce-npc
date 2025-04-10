@@ -329,15 +329,14 @@ function processControllerInput() {
     if (!renderer.xr.isPresenting) return;
     
     const session = renderer.xr.getSession();
-    
     if (!session) return;
+    
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     
     // Reset movement values
     thumbstickMoveX = 0;
     thumbstickMoveY = 0;
     thumbstickTurnX = 0;
-    
-    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
     
     for (let i = 0; i < gamepads.length; i++) {
         const gamepad = gamepads[i];
@@ -346,19 +345,64 @@ function processControllerInput() {
             const axes = gamepad.axes;
             
             if (axes && axes.length >= 4) {
-                // Check which controller this is
+                // Get movement from left controller
                 if (gamepad.hand === 'left' || i === 0) {
-                    // Left controller - movement
-                    thumbstickMoveX = Math.abs(axes[0]) > 0.05 ? axes[0] : 0; // X-axis (left/right)
-                    thumbstickMoveY = Math.abs(axes[1]) > 0.05 ? axes[1] : 0; // Y-axis (forward/back)
-                } else if (gamepad.hand === 'right' || i === 1) {
-                    // Right controller - turning
-                    thumbstickTurnX = Math.abs(axes[0]) > 0.05 ? axes[0] : 0; // X-axis (rotate)
+                    thumbstickMoveX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0;
+                    thumbstickMoveY = Math.abs(axes[1]) > 0.1 ? axes[1] : 0;
+                    
+                    // Apply movement immediately
+                    if (thumbstickMoveX !== 0 || thumbstickMoveY !== 0) {
+                        movePlayer(thumbstickMoveX, thumbstickMoveY);
+                    }
+                }
+                // Get rotation from right controller
+                else if (gamepad.hand === 'right' || i === 1) {
+                    thumbstickTurnX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0;
+                    
+                    if (thumbstickTurnX !== 0) {
+                        rotatePlayer(thumbstickTurnX);
+                    }
                 }
             }
         }
     }
 }
+
+function movePlayer(moveX, moveY) {
+    const direction = new THREE.Vector3(0, 0, -1);
+    direction.applyQuaternion(camera.quaternion);
+    direction.y = 0;
+    direction.normalize();
+    
+    const right = new THREE.Vector3(1, 0, 0);
+    right.applyQuaternion(camera.quaternion);
+    right.normalize();
+    
+    const moveFactor = 0.05; // Reduced for smoother movement
+    
+    // Forward/backward movement
+    if (moveY !== 0) {
+        cameraRig.position.x -= direction.x * moveY * moveFactor;
+        cameraRig.position.z -= direction.z * moveY * moveFactor;
+    }
+    
+    // Left/right movement
+    if (moveX !== 0) {
+        cameraRig.position.x += right.x * moveX * moveFactor;
+        cameraRig.position.z += right.z * moveX * moveFactor;
+    }
+}
+
+function rotatePlayer(turnX) {
+    // Snap turning or smooth turning
+    cameraRig.rotation.y -= turnX * 0.05; // For smooth turning
+    
+    // For snap turning, use something like:
+    // if (Math.abs(turnX) > 0.7) {
+    //     cameraRig.rotation.y -= Math.sign(turnX) * (Math.PI / 4); // 45-degree rotation
+    // }
+}
+
 
         fetch('box.glb') // Check the simple test file first
     .then(response => {
@@ -1038,6 +1082,8 @@ function updateVolumeIndicator() {
         function render() {
     try {
         const delta = clock.getDelta();
+
+        processControllerInput();
              
         // CRITICAL FIX: Process VR controller input 
         if (renderer.xr.isPresenting) {
@@ -1244,6 +1290,3 @@ function quitApplication() {
     </script>
 </body>
 </html>
-
-
-
