@@ -993,79 +993,93 @@ function updateVolumeIndicator() {
     try {
         const delta = clock.getDelta();
              
-          // CRITICAL FIX: Process VR controller input 
-          if (renderer.xr.isPresenting) {
+        // CRITICAL FIX: Process VR controller input 
+        if (renderer.xr.isPresenting) {
             // Use direct gamepad access instead of the complex system
             const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
             
-            // Force-move on ANY gamepad input
+            // Track if any buttons are pressed for color change
+            let triggerPressed = false;
+            let gripPressed = false;
+            
+            // Check all gamepads for button presses
             for (let i = 0; i < gamepads.length; i++) {
                 const gamepad = gamepads[i];
-                if (gamepad && gamepad.connected && gamepad.axes && gamepad.axes.length >= 2) {
-                    // Get first two axes on any connected gamepad
-                    const moveX = Math.abs(gamepad.axes[0]) > 0.1 ? gamepad.axes[0] : 0;
-                    const moveY = Math.abs(gamepad.axes[1]) > 0.1 ? gamepad.axes[1] : 0;
-                    
-                    if (moveX !== 0 || moveY !== 0) {
-                        // Log every detected movement input
-                        console.log(`MOVEMENT DETECTED on gamepad ${i}: x=${moveX.toFixed(2)}, y=${moveY.toFixed(2)}`);
-                        
-                        // Get camera direction
-                        const direction = new THREE.Vector3(0, 0, -1);
-                        direction.applyQuaternion(camera.quaternion);
-                        direction.y = 0;
-                        direction.normalize();
-                        
-                        // Get right vector
-                        const right = new THREE.Vector3(1, 0, 0);
-                        right.applyQuaternion(camera.quaternion);
-                        right.normalize();
-                        
-                        // Apply extreme movement (0.5 unit per frame)
-                        const moveFactor = 0.5;
-                        
-                        // Forward/backward
-                        if (moveY !== 0) {
-                            cameraRig.position.x -= direction.x * moveY * moveFactor;
-                            cameraRig.position.z -= direction.z * moveY * moveFactor;
-                            console.log('MOVING F/B:', cameraRig.position.toArray());
-                        }
-                        
-                        // Left/right
-                        if (moveX !== 0) {
-                            cameraRig.position.x += right.x * moveX * moveFactor;
-                            cameraRig.position.z += right.z * moveX * moveFactor;
-                            console.log('MOVING L/R:', cameraRig.position.toArray());
-                        }
-                        
-                        // Make the movement indicator super obvious
-                        if (movementIndicator) {
-                            movementIndicator.scale.set(1, 1, Math.abs(moveY) * 5 + 1);
-                            movementIndicator.material.wireframe = false;
-                            movementIndicator.material.color.set(0x00ff00);
-                        }
+                if (gamepad && gamepad.connected) {
+                    // Check if trigger (usually button 0) is pressed
+                    if (gamepad.buttons && gamepad.buttons.length > 0 && gamepad.buttons[0].pressed) {
+                        triggerPressed = true;
+                        console.log(`TRIGGER PRESSED on gamepad ${i}`);
                     }
                     
-                    // Check for rotation on right thumbstick (typically axes 2 and 3)
-                    if (gamepad.axes.length >= 4) {
-                        const turnX = Math.abs(gamepad.axes[2]) > 0.1 ? gamepad.axes[2] : 0;
-                        if (turnX !== 0) {
-                            // Apply a very obvious rotation
-                            cameraRig.rotateY(-turnX * 0.1);
-                            console.log('TURNING:', turnX);
+                    // Check if grip (usually button 1) is pressed  
+                    if (gamepad.buttons && gamepad.buttons.length > 1 && gamepad.buttons[1].pressed) {
+                        gripPressed = true;
+                        console.log(`GRIP PRESSED on gamepad ${i}`);
+                    }
+                    
+                    // Process thumbstick movement as before
+                    if (gamepad.axes && gamepad.axes.length >= 2) {
+                        const moveX = Math.abs(gamepad.axes[0]) > 0.1 ? gamepad.axes[0] : 0;
+                        const moveY = Math.abs(gamepad.axes[1]) > 0.1 ? gamepad.axes[1] : 0;
+                        
+                        // Log input values to confirm they're being detected
+                        if (moveX !== 0 || moveY !== 0) {
+                            console.log(`THUMBSTICK MOVEMENT on gamepad ${i}: x=${moveX.toFixed(2)}, y=${moveY.toFixed(2)}`);
+                        }
+                        
+                        // Apply movement as before...
+                        if (moveX !== 0 || moveY !== 0) {
+                            // Movement code from before...
+                            const direction = new THREE.Vector3(0, 0, -1);
+                            direction.applyQuaternion(camera.quaternion);
+                            direction.y = 0;
+                            direction.normalize();
+                            
+                            const right = new THREE.Vector3(1, 0, 0);
+                            right.applyQuaternion(camera.quaternion);
+                            right.normalize();
+                            
+                            const moveFactor = 0.5;
+                            
+                            if (moveY !== 0) {
+                                cameraRig.position.x -= direction.x * moveY * moveFactor;
+                                cameraRig.position.z -= direction.z * moveY * moveFactor;
+                                console.log('MOVING F/B:', cameraRig.position.toArray());
+                            }
+                            
+                            if (moveX !== 0) {
+                                cameraRig.position.x += right.x * moveX * moveFactor;
+                                cameraRig.position.z += right.z * moveX * moveFactor;
+                                console.log('MOVING L/R:', cameraRig.position.toArray());
+                            }
                         }
                     }
                 }
             }
+            
+            // Update movement indicator based on button presses
+            if (movementIndicator) {
+                if (triggerPressed) {
+                    // Change to red when trigger is pressed
+                    movementIndicator.material.color.set(0xff0000);
+                } else if (gripPressed) {
+                    // Change to blue when grip is pressed
+                    movementIndicator.material.color.set(0x0000ff);
+                } else {
+                    // Default color when no buttons are pressed
+                    movementIndicator.material.color.set(0xff00ff);
+                }
+                
+                // Make it obvious
+                movementIndicator.scale.set(1, 1, 1);
+            }
         }
        
-
-          // Update the volume indicator if present
-          if (typeof updateVolumeIndicator === 'function') {
+        // Rest of your render function
+        if (typeof updateVolumeIndicator === 'function') {
             updateVolumeIndicator();
         }
-        
-      
         
         // Update NPC movement to follow user
         updateNPCMovement();
@@ -1088,24 +1102,57 @@ function updateVolumeIndicator() {
 }
 
 function createMovementIndicator() {
-    // Create a MUCH more visible indicator
-    const geometry = new THREE.ConeGeometry(0.3, 1.0, 8);
+    // Create a group to hold all indicator elements
+    const indicatorGroup = new THREE.Group();
+    
+    // Create a larger cone
+    const geometry = new THREE.ConeGeometry(0.4, 1.5, 8);
     geometry.rotateX(Math.PI / 2); // Point forward
     const material = new THREE.MeshBasicMaterial({ 
-        color: 0xff00ff, // Bright pink
+        color: 0xff00ff, // Bright magenta
         wireframe: false  // Solid
     });
     const indicator = new THREE.Mesh(geometry, material);
-    indicator.position.set(0, 0.1, -1.0); // Much further in front
-    cameraRig.add(indicator);
+    indicator.position.set(0, 0.2, -1.0);
+    indicatorGroup.add(indicator);
     
     // Add a sphere at the origin point for reference
-    const sphereGeo = new THREE.SphereGeometry(0.1, 16, 16);
+    const sphereGeo = new THREE.SphereGeometry(0.2, 16, 16);
     const sphereMat = new THREE.MeshBasicMaterial({color: 0xffff00});
     const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-    sphere.position.set(0, 0, 0);
-    cameraRig.add(sphere);
+    sphere.position.set(0, 0.5, 0);
+    indicatorGroup.add(sphere);
     
+    // Add a text indicator
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 256;
+    canvas.height = 128;
+    
+    // Draw text
+    context.fillStyle = 'white';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.font = 'bold 40px Arial';
+    context.fillStyle = 'black';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillText('PRESS BUTTONS', canvas.width/2, canvas.height/2);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const textMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true
+    });
+    
+    const textGeometry = new THREE.PlaneGeometry(0.5, 0.25);
+    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+    textMesh.position.set(0, 0.7, -0.5);
+    indicatorGroup.add(textMesh);
+    
+    // Add to camera rig
+    cameraRig.add(indicatorGroup);
+    
+    // Return the cone specifically as that's what we'll color change
     return indicator;
 }
         
