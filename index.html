@@ -113,7 +113,7 @@
         let thumbstickMoveY = 0;
         let thumbstickTurnX = 0;
         let cameraRig;
-        let movementIndicator; 
+        
         
         // Initialize and run the application
         init();
@@ -144,8 +144,7 @@
           cameraRig.add(camera);
           scene.add(cameraRig);
 
-            // Add this line here to create the movement indicator
-           movementIndicator = createMovementIndicator();
+          
             
 
             // Set up renderer
@@ -248,29 +247,7 @@
         console.log(`Controller 1 connected: ${xrData.handedness}`);
     });
     
-    // DIRECT EVENT LISTENERS FOR BUTTON PRESSES
-    controller1.addEventListener('selectstart', function() {
-        console.log('TRIGGER PRESSED - Controller 1');
-        if (movementIndicator) {
-            movementIndicator.material.color.set(0xff0000); // RED
-            showSpeechBubble('Trigger pressed!');
-        }
-    });
-    
-    controller1.addEventListener('selectend', function() {
-        console.log('TRIGGER RELEASED - Controller 1');
-        if (movementIndicator) {
-            movementIndicator.material.color.set(0xff00ff); // Back to magenta
-        }
-    });
-    
-    controller1.addEventListener('squeezestart', function() {
-        console.log('GRIP PRESSED - Controller 1');
-        if (movementIndicator) {
-            movementIndicator.material.color.set(0x0000ff); // BLUE
-            showSpeechBubble('Grip pressed!');
-        }
-    });
+   
     
     scene.add(controller1);
     
@@ -286,22 +263,7 @@
         console.log(`Controller 2 connected: ${xrData.handedness}`);
     });
     
-    // DIRECT EVENT LISTENERS FOR BUTTON PRESSES
-    controller2.addEventListener('selectstart', function() {
-        console.log('TRIGGER PRESSED - Controller 2');
-        if (movementIndicator) {
-            movementIndicator.material.color.set(0xff0000); // RED
-            showSpeechBubble('Trigger pressed!');
-        }
-    });
     
-    controller2.addEventListener('squeezestart', function() {
-        console.log('GRIP PRESSED - Controller 2');
-        if (movementIndicator) {
-            movementIndicator.material.color.set(0x0000ff); // BLUE
-            showSpeechBubble('Grip pressed!');
-        }
-    });
     
     scene.add(controller2);
     
@@ -764,6 +726,10 @@ function loadNPCAnimations() {
         }
         
         function onWindowResize() {
+            // Don't try to resize while in VR mode
+    if (renderer.xr.isPresenting) return;
+
+
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -1150,22 +1116,7 @@ function updateVolumeIndicator() {
                 }
             }
             
-            // Update movement indicator based on button presses
-            if (movementIndicator) {
-                if (triggerPressed) {
-                    // Change to red when trigger is pressed
-                    movementIndicator.material.color.set(0xff0000);
-                } else if (gripPressed) {
-                    // Change to blue when grip is pressed
-                    movementIndicator.material.color.set(0x0000ff);
-                } else {
-                    // Default color when no buttons are pressed
-                    movementIndicator.material.color.set(0xff00ff);
-                }
-                
-                // Make it obvious
-                movementIndicator.scale.set(1, 1, 1);
-            }
+          
         }
        
         // Rest of your render function
@@ -1193,66 +1144,7 @@ function updateVolumeIndicator() {
     }
 }
 
-function createMovementIndicator() {
-    // Create a group to hold all indicator elements
-    const indicatorGroup = new THREE.Group();
-    
-    // Create a MUCH LARGER cone
-    const geometry = new THREE.ConeGeometry(0.2, 0.6, 8);
-    geometry.rotateX(Math.PI / 2); // Point forward
-    const material = new THREE.MeshBasicMaterial({ 
-        color: 0xff00ff, // Bright magenta
-        wireframe: false,
-        transparent: true,
-        opacity: 0.8
-    });
-    const indicator = new THREE.Mesh(geometry, material);
-    indicator.position.set(0, 0, -0.5); // Position directly in front of camera
-    indicatorGroup.add(indicator);
-    
-    // Add pulsing sphere as a very obvious indicator
-    const sphereGeo = new THREE.SphereGeometry(0.1, 16, 16);
-    const sphereMat = new THREE.MeshBasicMaterial({
-        color: 0xffff00,
-        transparent: true,
-        opacity: 0.8
-    });
-    const sphere = new THREE.Mesh(sphereGeo, sphereMat);
-    sphere.position.set(0, 0.2, -0.5); // Above the cone
-    indicatorGroup.add(sphere);
-    
-    // Create a very simple text that says "PRESS ME"
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    canvas.width = 256;
-    canvas.height = 128;
-    
-    // Draw text
-    context.fillStyle = 'black';
-    context.fillRect(0, 0, canvas.width, canvas.height);
-    context.font = 'bold 40px Arial';
-    context.fillStyle = 'white';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText('PRESS BUTTONS', canvas.width/2, canvas.height/2);
-    
-    const texture = new THREE.CanvasTexture(canvas);
-    const textMaterial = new THREE.MeshBasicMaterial({
-        map: texture,
-        transparent: true
-    });
-    
-    const textGeometry = new THREE.PlaneGeometry(0.3, 0.15);
-    const textMesh = new THREE.Mesh(textGeometry, textMaterial);
-    textMesh.position.set(0, -0.2, -0.5); // Below the cone
-    indicatorGroup.add(textMesh);
-    
-    // Add to camera directly
-    camera.add(indicatorGroup);
-    
-    // Return the cone specifically as that's what we'll color change
-    return indicator;
-}
+
         
 function quitApplication() {
     showSpeechBubble('Exiting application...');
