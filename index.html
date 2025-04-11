@@ -161,6 +161,9 @@
              optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
             })
             );
+
+            renderer.xr.addEventListener('sessionstart', handleVRSessionStart);
+            renderer.xr.addEventListener('sessionend', handleVRSessionEnd);
             
             // Set up lighting
             setupLighting();
@@ -491,25 +494,30 @@ function rotatePlayer(turnX) {
         
         // Check if the model has built-in animations
         if (gltf.animations && gltf.animations.length > 0) {
-            console.log(`Model has ${gltf.animations.length} built-in animations`);
-            gltf.animations.forEach((anim, index) => {
-                console.log(`Animation ${index}: ${anim.name || 'Unnamed'} (Duration: ${anim.duration}s)`);
-            });
-            
-            // Use the first animation as idle
-            const idleAction = npcMixer.clipAction(gltf.animations[0]);
-            npcAnimations['idle'] = idleAction;
-            idleAction.play();
-            
-            // If there's a second animation, use it for talking
-            if (gltf.animations.length > 1) {
-                const talkAction = npcMixer.clipAction(gltf.animations[1]);
-                npcAnimations['talking'] = talkAction;
-            }
-        } else {
-            console.log('No built-in animations found.');
-            // Don't use procedural animations, as requested
-        }
+    console.log(`Model has ${gltf.animations.length} built-in animations`);
+    gltf.animations.forEach((anim, index) => {
+        console.log(`Animation ${index}: ${anim.name || 'Unnamed'} (Duration: ${anim.duration}s)`);
+    });
+    
+    // Use the first animation as idle
+    const idleAction = npcMixer.clipAction(gltf.animations[0]);
+    npcAnimations['idle'] = idleAction;
+    
+    // Set effective weight to ensure proper animation strength
+    idleAction.setEffectiveWeight(1.0);
+    
+    // Reset and play immediately
+    idleAction.reset().play();
+    
+    // Force an immediate mixer update to apply the animation
+    npcMixer.update(0);
+    
+    // If there's a second animation, use it for talking
+    if (gltf.animations.length > 1) {
+        const talkAction = npcMixer.clipAction(gltf.animations[1]);
+        npcAnimations['talking'] = talkAction;
+    }
+}
 
         loadNPCAnimations();
         
@@ -555,10 +563,16 @@ function loadNPCAnimations() {
                 
                 // If this is the first animation and we don't have an idle animation yet, use it
                 if (index === 0 && !npcAnimations['idle']) {
-                    console.log('Setting first external animation as idle');
-                    npcAnimations['idle'] = action;
-                    action.play();
-                }
+                console.log('Setting first external animation as idle');
+                  npcAnimations['idle'] = action;
+                   action.setEffectiveWeight(1.0);
+                   action.reset().play();
+    
+                    // Force immediate update
+                   if (npcMixer) {
+                     npcMixer.update(0);
+                   }
+                    }
                 
                 // If this animation name contains "talk" or "speak" and we don't have a talking animation yet,
                 // use it for the talking animation
@@ -1129,7 +1143,18 @@ function updateVolumeIndicator() {
         
         // Update animation mixers if available
         if (userMixer) userMixer.update(delta);
-        if (npcMixer) npcMixer.update(delta);
+        if (npcMixer) {
+        npcMixer.update(delta);
+    
+         // Debug to ensure mixer is updating (you can remove this after fixing)
+         if (renderer.xr.isPresenting && npcMixer.time === 0) {
+        console.log('NPC mixer not advancing in VR - forcing animation restart');
+        if (npcAnimations['idle']) {
+            npcAnimations['idle'].reset().play();
+        }
+      }
+        }
+        
         
         // Update user avatar position based on camera in VR
         if (renderer.xr.isPresenting && userAvatar) {
@@ -1144,6 +1169,32 @@ function updateVolumeIndicator() {
     }
 }
 
+function handleVRSessionStart() {
+    console.log('VR session started - ensuring animations are running');
+    
+    // Force NPC animations to play
+    if (npcAvatar && npcMixer && npcAnimations['idle']) {
+        // Reset and explicitly play the idle animation
+        npcAnimations['idle'].reset().setEffectiveWeight(1.0).play();
+        
+        // Force an update of the mixer to apply the animation immediately
+        npcMixer.update(0);
+    }
+    
+    // Hide UI elements that shouldn't appear in VR
+    muteButton.visible = false;
+    volumeIndicator.parent.visible = false;
+    
+    if (document.getElementById('speechBubble')) {
+        document.getElementById('speechBubble').style.display = 'none';
+    }
+}
+
+function handleVRSessionEnd() {
+    // Make UI elements visible again when exiting VR
+    if (muteButton) muteButton.visible = true;
+    if (volumeIndicator && volumeIndicator.parent) volumeIndicator.parent.visible = true;
+}
 
         
 function quitApplication() {
