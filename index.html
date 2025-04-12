@@ -75,20 +75,31 @@
       let boxes = [];
 
       function initXR() {
-        xrButton = new WebXRButton({
-          onRequestSession: onRequestSession,
-          onEndSession: onEndSession
-        });
-        document.querySelector('header').appendChild(xrButton.domElement);
-
-        if (navigator.xr) {
-          navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
-            xrButton.enabled = supported;
-          });
-
-          navigator.xr.requestSession('inline').then(onSessionStarted);
-        }
+  xrButton = new WebXRButton({
+    onRequestSession: onRequestSession,
+    onEndSession: onEndSession
+  });
+  document.querySelector('header').appendChild(xrButton.domElement);
+  
+  // Add a style to make the button more visible
+  xrButton.domElement.style.display = 'block';
+  xrButton.domElement.style.margin = '10px auto';
+  
+  if (navigator.xr) {
+    navigator.xr.isSessionSupported('immersive-vr').then((supported) => {
+      xrButton.enabled = supported;
+      if (!supported) {
+        xrButton.domElement.textContent = "WebXR VR Not Available";
+        xrButton.domElement.style.backgroundColor = "#888";
       }
+    });
+
+    navigator.xr.requestSession('inline').then(onSessionStarted);
+  } else {
+    xrButton.domElement.textContent = "WebXR Not Supported";
+    xrButton.domElement.style.backgroundColor = "#888";
+  }
+}
 
       function addBox(x, y, z, r, g, b, box_list) {
         let boxBuilder = new BoxBuilder();
