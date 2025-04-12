@@ -122,6 +122,56 @@
         let teleportMarker;
         let isTeleporting = false;
         let teleportPoint = new THREE.Vector3();
+        let lipSyncActive = false;
+       let currentViseme = 'X';
+        let lipSyncTimeline = [];
+        let lipSyncStartTime = 0;
+        let lipSyncInterval = null;
+        let morphTargetDict = null;
+        let blinkInterval = null;
+        let eyeBlinkMorphTargets = {
+        left: 'eyeBlinkLeft',  // Adjust these names based on your model
+        right: 'eyeBlinkRight'
+        };
+        let isBlinking = false;
+        let timeToNextBlink = 0;
+        let eyeMovementActive = false;
+    let eyeMovementMorphTargets = {
+    lookUpLeft: 'eyeLookUpLeft',
+    lookUpRight: 'eyeLookUpRight',
+    lookDownLeft: 'eyeLookDownLeft', 
+    lookDownRight: 'eyeLookDownRight',
+    lookInLeft: 'eyeLookInLeft',
+    lookInRight: 'eyeLookInRight',
+    lookOutLeft: 'eyeLookOutLeft',
+    lookOutRight: 'eyeLookOutRight'
+};
+
+        // Viseme definitions (standard set used by Rhubarb)
+    const visemes = {
+    'X': { name: 'rest', weight: 0 },    // neutral/rest position
+    'A': { name: 'ah', weight: 1 },      // e.g., "hat"
+    'B': { name: 'ee', weight: 1 },      // e.g., "feet" 
+    'C': { name: 'oo', weight: 1 },      // e.g., "boot"
+    'D': { name: 'oh', weight: 1 },      // e.g., "hot" 
+    'E': { name: 'ih', weight: 1 },      // e.g., "bit"
+    'F': { name: 'ff', weight: 1 },      // e.g., "food"
+    'G': { name: 'mb', weight: 1 },      // e.g., "mom"
+    'H': { name: 'kk', weight: 1 }       // e.g., "cut"
+};
+
+// Ready Player Me viseme to Rhubarb viseme mapping (customize based on your model)
+const visemeMapping = {
+    'X': 'viseme_sil',
+    'A': 'viseme_aa',
+    'B': 'viseme_I', 
+    'C': 'viseme_O',
+    'D': 'viseme_U',
+    'E': 'viseme_E',
+    'F': 'viseme_FF',
+    'G': 'viseme_PP',
+    'H': 'viseme_kk'
+};
         
         
         // Initialize and run the application
@@ -221,6 +271,8 @@
             startRecordingContinuous();
             
             createTeleportMarker();
+
+            addVisemeDebugDisplay();
 
             
             
@@ -612,7 +664,9 @@ function rotatePlayer(turnX) {
 }
 
         loadNPCAnimations();
-        
+        startEyeTracking();
+        startBlinking();
+
         // Remove placeholder avatars completely once real model is loaded
         scene.traverse(object => {
             if (object.userData && object.userData.isPlaceholder) {
@@ -622,6 +676,23 @@ function rotatePlayer(turnX) {
     } catch (e) {
         console.error('Error processing model:', e);
     }
+
+    // Analyze morph targets
+npcAvatar.traverse(function(child) {
+    if (child.isMesh && child.morphTargetDictionary) {
+        console.log("Found mesh with morph targets:", child.name);
+        console.log("Available morph targets:", Object.keys(child.morphTargetDictionary));
+        
+        // Check which visemes are available
+        Object.entries(visemeMapping).forEach(([key, morphName]) => {
+            if (child.morphTargetDictionary[morphName] !== undefined) {
+                console.log(`✓ Viseme ${key} (${morphName}) available`);
+            } else {
+                console.log(`✗ Viseme ${key} (${morphName}) not found`);
+            }
+        });
+    }
+});
 }
 
 
@@ -770,6 +841,9 @@ function loadNPCAnimations() {
 
     // Show text in speech bubble
     showSpeechBubble(text);
+
+    // Start lip sync animation
+    startLipSync(text);
     
     // Use speak.js for TTS
     speakText(text);
@@ -781,11 +855,13 @@ function loadNPCAnimations() {
         npcAnimations['talking'].reset().fadeIn(0.5).play();
     } 
     
-    // End speaking after calculated duration - speak.js doesn't provide callbacks
-    // so we estimate duration based on text length
+    // End speaking after calculated duration - 
     const speakDuration = text.length * 75; // ~75ms per character is a rough estimate
     setTimeout(() => {
         npcSpeaking = false;
+
+         // Stop lip sync
+         stopLipSync();
         
         // Return to idle animation
         if (npcAnimations['talking'] && npcAnimations['idle']) {
@@ -810,7 +886,462 @@ function speakText(text) {
         console.error('Error using speak.js:', e);
     }
 }       
+
+function generateLipSyncFromText(text) {
+    const words = text.toLowerCase().trim().split(/\s+/);
+    const timeline = [];
+    let currentTime = 0;
+    const avgWordDuration = 0.3; // seconds per word
+    
+    words.forEach(word => {
+        // Skip empty words
+        if (word.length === 0) return;
+        
+        // Handle punctuation
+        word = word.replace(/[.,!?;:]/g, '');
+        
+        // Add a small pause for punctuation
+        if (/[.,!?;:]/.test(word)) {
+            timeline.push({
+                start: currentTime,
+                end: currentTime + 0.2,
+                value: 'X' // Closed mouth for brief pause
+            });
+            currentTime += 0.2;
+        }
+        
+        // Process each character in the word
+        for (let i = 0; i < word.length; i++) {
+            const char = word[i];
+            let viseme = mapCharToViseme(char);
+            let duration = 0.1; // 100ms per character is approximation
+            
+            // Longer duration for vowels
+            if ('aeiou'.includes(char)) {
+                duration = 0.15;
+            }
+            
+            // Add viseme to timeline
+            timeline.push({
+                start: currentTime,
+                end: currentTime + duration,
+                value: viseme
+            });
+            
+            currentTime += duration;
+        }
+        
+        // Small pause between words
+        timeline.push({
+            start: currentTime,
+            end: currentTime + 0.05,
+            value: 'X'
+        });
+        currentTime += 0.05;
+    });
+    
+    return timeline;
+}
+
+function mapCharToViseme(char) {
+    // Map from character to Rhubarb viseme
+    if ('aàáâäæãåā'.includes(char)) return 'A';
+    if ('eèéêëēėę'.includes(char)) return 'E';
+    if ('iìíîïī'.includes(char)) return 'B';
+    if ('oòóôöõø'.includes(char)) return 'D';
+    if ('uùúûü'.includes(char)) return 'C';
+    if ('fv'.includes(char)) return 'F';
+    if ('bmp'.includes(char)) return 'G';
+    if ('cgjkqsxz'.includes(char)) return 'H';
+    // Default for all other characters
+    return 'X';
+}
+
+function startLipSync(text) {
+    // Stop any existing lip sync
+    stopLipSync();
+    
+    // Generate timeline from text
+    lipSyncTimeline = generateLipSyncFromText(text);
+    
+    // Start time tracking
+    lipSyncStartTime = performance.now() / 1000;
+    lipSyncActive = true;
+    
+    // Set initial mouth shape
+    setViseme('X');
+    
+    // Create interval to update mouth shape
+    lipSyncInterval = setInterval(updateMouthShape, 16.67); // ~60fps
+}
+
+function stopLipSync() {
+    lipSyncActive = false;
+    if (lipSyncInterval) {
+        clearInterval(lipSyncInterval);
+        lipSyncInterval = null;
+    }
+    setViseme('X'); // Reset to neutral position
+}
+
+function updateMouthShape() {
+    if (!lipSyncActive || lipSyncTimeline.length === 0) return;
+    
+    const elapsed = (performance.now() / 1000) - lipSyncStartTime;
+    
+    // Find the appropriate viseme for current time
+    let foundViseme = false;
+    for (let i = 0; i < lipSyncTimeline.length; i++) {
+        const entry = lipSyncTimeline[i];
+        if (elapsed >= entry.start && elapsed < entry.end) {
+            setViseme(entry.value);
+            foundViseme = true;
+            break;
+        }
+    }
+    
+    // Check if we reached the end of the timeline
+    if (!foundViseme && elapsed > lipSyncTimeline[lipSyncTimeline.length - 1].end) {
+        stopLipSync();
+    }
+}
+
+function setViseme(visemeKey) {
+    if (visemeKey === currentViseme) return;
+    currentViseme = visemeKey;
+    
+    // Only proceed if we have the NPC avatar and it has morph targets
+    if (!npcAvatar) return;
+    
+    // Reset all viseme morph targets
+    npcAvatar.traverse(node => {
+        if (!node.isMesh || !node.morphTargetDictionary || !node.morphTargetInfluences) return;
+        
+        // Store dictionary reference for easier access
+        if (!morphTargetDict) {
+            morphTargetDict = node.morphTargetDictionary;
+            console.log("Available morph targets:", Object.keys(morphTargetDict));
+        }
+        
+        // Reset all morph targets that could be visemes
+        Object.values(visemeMapping).forEach(morphName => {
+            const idx = node.morphTargetDictionary[morphName];
+            if (idx !== undefined) {
+                node.morphTargetInfluences[idx] = 0;
+            }
+        });
+        
+        // Set the current viseme
+        const morphName = visemeMapping[visemeKey];
+        const morphIndex = node.morphTargetDictionary[morphName];
+        
+        if (morphIndex !== undefined) {
+            node.morphTargetInfluences[morphIndex] = visemes[visemeKey].weight;
+            console.log(`Set viseme ${visemeKey} (${morphName}) to ${visemes[visemeKey].weight}`);
+        } else {
+            console.warn(`Morph target ${morphName} not found for viseme ${visemeKey}`);
+        }
+    });
+}
        
+
+
+// display current viseme state for testing and debugging
+function addVisemeDebugDisplay() {
+    // Add debug element to body
+    const debugEl = document.createElement('div');
+    debugEl.id = 'viseme-debug';
+    debugEl.style.position = 'fixed';
+    debugEl.style.bottom = '10px';
+    debugEl.style.left = '10px';
+    debugEl.style.background = 'rgba(0,0,0,0.7)';
+    debugEl.style.color = 'white';
+    debugEl.style.padding = '5px 10px';
+    debugEl.style.fontFamily = 'monospace';
+    debugEl.style.zIndex = '1000';
+    document.body.appendChild(debugEl);
+    
+    // Update it every frame
+    setInterval(() => {
+        if (lipSyncActive) {
+            const elapsed = (performance.now() / 1000) - lipSyncStartTime;
+            debugEl.textContent = `Viseme: ${currentViseme} | Time: ${elapsed.toFixed(2)}s`;
+            debugEl.style.display = 'block';
+        } else {
+            debugEl.style.display = 'none';
+        }
+    }, 16.67);
+}
+
+function createMorphTargetDebugUI(mesh) {
+    // Create a panel for testing different morph targets
+    const panel = document.createElement('div');
+    panel.style.position = 'fixed';
+    panel.style.top = '10px';
+    panel.style.right = '10px';
+    panel.style.background = 'rgba(0,0,0,0.7)';
+    panel.style.color = 'white';
+    panel.style.padding = '10px';
+    panel.style.maxHeight = '90vh';
+    panel.style.overflowY = 'auto';
+    panel.style.fontFamily = 'monospace';
+    panel.style.zIndex = '1000';
+    
+    const title = document.createElement('h3');
+    title.textContent = 'Morph Target Tester';
+    title.style.margin = '0 0 10px 0';
+    panel.appendChild(title);
+    
+    // Add sliders for each morph target
+    Object.keys(mesh.morphTargetDictionary).forEach(name => {
+        const container = document.createElement('div');
+        container.style.margin = '5px 0';
+        
+        const label = document.createElement('label');
+        label.textContent = name;
+        label.style.display = 'block';
+        container.appendChild(label);
+        
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.min = '0';
+        slider.max = '1';
+        slider.step = '0.01';
+        slider.value = '0';
+        slider.style.width = '100%';
+        
+        const valueDisplay = document.createElement('span');
+        valueDisplay.textContent = '0';
+        valueDisplay.style.marginLeft = '5px';
+        
+        // Set morph target weight when slider changes
+        slider.oninput = () => {
+            const value = parseFloat(slider.value);
+            const index = mesh.morphTargetDictionary[name];
+            mesh.morphTargetInfluences[index] = value;
+            valueDisplay.textContent = value.toFixed(2);
+        };
+        
+        container.appendChild(slider);
+        container.appendChild(valueDisplay);
+        panel.appendChild(container);
+    });
+    
+    // Add a reset button
+    const resetBtn = document.createElement('button');
+    resetBtn.textContent = 'Reset All';
+    resetBtn.style.marginTop = '10px';
+    resetBtn.style.padding = '5px';
+    resetBtn.onclick = () => {
+        // Reset all morph targets to 0
+        for (let i = 0; i < mesh.morphTargetInfluences.length; i++) {
+            mesh.morphTargetInfluences[i] = 0;
+        }
+        
+        // Reset all sliders
+        Array.from(panel.querySelectorAll('input[type="range"]')).forEach(slider => {
+            slider.value = 0;
+            slider.nextElementSibling.textContent = '0';
+        });
+    };
+    panel.appendChild(resetBtn);
+    
+    // Add a mapping generator button
+    const mapBtn = document.createElement('button');
+    mapBtn.textContent = 'Generate Viseme Mapping';
+    mapBtn.style.marginTop = '10px';
+    mapBtn.style.marginLeft = '10px';
+    mapBtn.style.padding = '5px';
+    mapBtn.onclick = () => {
+        console.log('// Paste this into your code to update viseme mapping:');
+        console.log('const visemeMapping = {');
+        
+        Object.keys(visemes).forEach(viseme => {
+            // Find the closest morph target for this viseme by name similarity
+            let bestMatch = null;
+            let bestScore = -1;
+            
+            Object.keys(mesh.morphTargetDictionary).forEach(morphName => {
+                const lowerMorphName = morphName.toLowerCase();
+                
+                // Try to match by name patterns
+                let score = 0;
+                
+                if (viseme === 'X' && lowerMorphName.includes('sil')) score += 10;
+                if (viseme === 'A' && (lowerMorphName.includes('aa') || lowerMorphName.includes('ah'))) score += 10;
+                if (viseme === 'B' && (lowerMorphName.includes('i') || lowerMorphName.includes('ee'))) score += 10;
+                if (viseme === 'C' && (lowerMorphName.includes('o') || lowerMorphName.includes('oo'))) score += 10;
+                if (viseme === 'D' && (lowerMorphName.includes('u') || lowerMorphName.includes('oh'))) score += 10;
+                if (viseme === 'E' && (lowerMorphName.includes('e') || lowerMorphName.includes('ih'))) score += 10;
+                if (viseme === 'F' && (lowerMorphName.includes('f') || lowerMorphName.includes('v'))) score += 10;
+                if (viseme === 'G' && (lowerMorphName.includes('m') || lowerMorphName.includes('b') || lowerMorphName.includes('p'))) score += 10;
+                if (viseme === 'H' && (lowerMorphName.includes('k') || lowerMorphName.includes('g'))) score += 10;
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestMatch = morphName;
+                }
+            });
+            
+            console.log(`    '${viseme}': '${bestMatch || "UNKNOWN"}', // ${visemes[viseme].name}`);
+        });
+        
+        console.log('};');
+    };
+    panel.appendChild(mapBtn);
+    
+    document.body.appendChild(panel);
+}
+
+
+
+// Start blinking NPC avatar
+function startBlinking() {
+    if (blinkInterval) clearInterval(blinkInterval);
+    
+    // Blink roughly every 4-6 seconds
+    blinkInterval = setInterval(() => {
+        if (!isBlinking && !npcSpeaking) {
+            blink();
+        }
+    }, 4000 + Math.random() * 2000);
+}
+
+function blink() {
+    isBlinking = true;
+    
+    // Apply blink morph targets
+    npcAvatar.traverse(node => {
+        if (node.isMesh && node.morphTargetDictionary) {
+            const leftBlinkIdx = node.morphTargetDictionary[eyeBlinkMorphTargets.left];
+            const rightBlinkIdx = node.morphTargetDictionary[eyeBlinkMorphTargets.right];
+            
+            if (leftBlinkIdx !== undefined) {
+                // Animate blink over 150ms
+                const startTime = performance.now();
+                const blinkDuration = 150;
+                
+                const animateBlink = () => {
+                    const elapsed = performance.now() - startTime;
+                    const t = Math.min(elapsed / blinkDuration, 1);
+                    
+                    // Close eyes
+                    if (t < 0.5) {
+                        const openAmount = 1 - (t * 2);
+                        if (leftBlinkIdx !== undefined) node.morphTargetInfluences[leftBlinkIdx] = 1 - openAmount;
+                        if (rightBlinkIdx !== undefined) node.morphTargetInfluences[rightBlinkIdx] = 1 - openAmount;
+                    } 
+                    // Open eyes
+                    else {
+                        const openAmount = (t - 0.5) * 2;
+                        if (leftBlinkIdx !== undefined) node.morphTargetInfluences[leftBlinkIdx] = 1 - openAmount;
+                        if (rightBlinkIdx !== undefined) node.morphTargetInfluences[rightBlinkIdx] = 1 - openAmount;
+                    }
+                    
+                    if (t < 1) {
+                        requestAnimationFrame(animateBlink);
+                    } else {
+                        isBlinking = false;
+                    }
+                };
+                
+                requestAnimationFrame(animateBlink);
+            }
+        }
+    });
+}
+
+function startEyeTracking() {
+    // Stop any previous eye tracking
+    eyeMovementActive = true;
+    
+    // Initially set eyes to neutral position
+    updateEyePosition(new THREE.Vector3(0, 0, 0), 0);
+    
+    console.log("Eye tracking started - NPC will maintain eye contact with player");
+}
+
+function updateEyePosition(targetWorldPosition = null) {
+    if (!eyeMovementActive || !npcAvatar || isBlinking) return;
+    
+    // If no target provided, use camera position (player's eyes)
+    if (!targetWorldPosition) {
+        targetWorldPosition = new THREE.Vector3();
+        camera.getWorldPosition(targetWorldPosition);
+    }
+    
+    // Get NPC's head position (approximate)
+    const npcHeadPosition = new THREE.Vector3();
+    npcAvatar.getWorldPosition(npcHeadPosition);
+    npcHeadPosition.y += 1.6; // Adjust to approximate eye level
+    
+    // Calculate direction from NPC to target
+    const lookDirection = new THREE.Vector3().subVectors(targetWorldPosition, npcHeadPosition);
+    lookDirection.normalize();
+    
+    // Transform world direction to NPC's local space
+    const localDirection = lookDirection.clone();
+    npcAvatar.worldToLocal(localDirection);
+    
+    // Calculate horizontal and vertical look amounts (-1 to 1 range)
+    // We invert Z because "forward" is negative Z in three.js
+    const lookHorizontal = Math.max(-1, Math.min(1, localDirection.x * 2));
+    const lookVertical = Math.max(-1, Math.min(1, localDirection.y * 2));
+    
+    // Apply to morph targets
+    npcAvatar.traverse(node => {
+        if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
+            // Reset all eye morph targets first
+            Object.values(eyeMovementMorphTargets).forEach(morphName => {
+                const idx = node.morphTargetDictionary[morphName];
+                if (idx !== undefined) {
+                    node.morphTargetInfluences[idx] = 0;
+                }
+            });
+            
+            // Apply appropriate morph targets based on look direction
+            // Look up/down
+            if (lookVertical > 0.1) {
+                // Looking up
+                const upLeftIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookUpLeft];
+                const upRightIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookUpRight];
+                
+                if (upLeftIdx !== undefined) node.morphTargetInfluences[upLeftIdx] = lookVertical;
+                if (upRightIdx !== undefined) node.morphTargetInfluences[upRightIdx] = lookVertical;
+            } 
+            else if (lookVertical < -0.1) {
+                // Looking down
+                const downLeftIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookDownLeft];
+                const downRightIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookDownRight];
+                
+                if (downLeftIdx !== undefined) node.morphTargetInfluences[downLeftIdx] = -lookVertical;
+                if (downRightIdx !== undefined) node.morphTargetInfluences[downRightIdx] = -lookVertical;
+            }
+            
+            // Look left/right
+            if (lookHorizontal < -0.1) {
+                // Looking left (from NPC's perspective)
+                const leftInIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookInLeft];
+                const rightOutIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookOutRight];
+                
+                if (leftInIdx !== undefined) node.morphTargetInfluences[leftInIdx] = -lookHorizontal;
+                if (rightOutIdx !== undefined) node.morphTargetInfluences[rightOutIdx] = -lookHorizontal;
+            } 
+            else if (lookHorizontal > 0.1) {
+                // Looking right (from NPC's perspective)
+                const leftOutIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookOutLeft];
+                const rightInIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookInRight];
+                
+                if (leftOutIdx !== undefined) node.morphTargetInfluences[leftOutIdx] = lookHorizontal;
+                if (rightInIdx !== undefined) node.morphTargetInfluences[rightInIdx] = lookHorizontal;
+            }
+        }
+    });
+}
+
+
+
+
         
         function updateNPCMovement() {
             if (!npcAvatar || !userAvatar) return;
@@ -1227,6 +1758,11 @@ function updateVolumeIndicator() {
             // Position user avatar to match camera
             userAvatar.position.x = camera.position.x;
             userAvatar.position.z = camera.position.z;
+        }
+
+        // Update eye position to look at camera
+        if (npcAvatar && eyeMovementActive && !npcSpeaking) {
+            updateEyePosition();
         }
         
         // Render the scene
