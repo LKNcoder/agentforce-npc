@@ -61,6 +61,8 @@
     <div class="loading" id="loadingScreen">Loading... Please wait</div>
 
     <!-- Import libraries via CDN -->
+    <script src="https://cdn.jsdelivr.net/gh/kripken/speak.js@master/speakClient.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/kripken/speak.js@master/speak.js"></script>
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
         {
@@ -113,6 +115,8 @@
         let thumbstickMoveY = 0;
         let thumbstickTurnX = 0;
         let cameraRig;
+        let audioListener;
+        let positionalAudio;
         
         
         // Initialize and run the application
@@ -205,6 +209,7 @@
 
             createMuteToggle();
             
+            setupSpatialAudio()
             
             setupAudioCapture();
 
@@ -221,7 +226,24 @@
             window.addEventListener('resize', onWindowResize);
         }
         
-
+    function setupSpatialAudio() {
+    // Create audio listener and add to camera
+    audioListener = new THREE.AudioListener();
+    camera.add(audioListener);
+    
+    // Create positional audio source
+    positionalAudio = new THREE.PositionalAudio(audioListener);
+    
+    // Configure audio settings
+    positionalAudio.setRefDistance(1);
+    positionalAudio.setDistanceModel('inverse');
+    positionalAudio.setRolloffFactor(1);
+    
+    // If NPC exists, attach audio to it
+    if (npcAvatar) {
+        npcAvatar.add(positionalAudio);
+    }
+    }
 
         function setupLighting() {
             // Ambient light
@@ -721,18 +743,23 @@ function loadNPCAnimations() {
         
     function npcSpeak(text) {
     npcSpeaking = true;
+
+    // Show text in speech bubble
+    showSpeechBubble(text);
     
-    // If we have a talking animation, use it
-    if (npcAnimations['talking']) {
+    // Use speak.js for TTS
+    speakText(text);
+    
+     // If we have a talking animation, use it
+     if (npcAnimations['talking']) {
         // Crossfade from idle to talking
         npcAnimations['idle'].fadeOut(0.5);
         npcAnimations['talking'].reset().fadeIn(0.5).play();
-    } else {
-        // Fall back to simple animation if model/animations aren't loaded
-        animateNPCSpeaking();
-    }
+    } 
     
-    // End speaking after calculated duration
+    // End speaking after calculated duration - speak.js doesn't provide callbacks
+    // so we estimate duration based on text length
+    const speakDuration = text.length * 75; // ~75ms per character is a rough estimate
     setTimeout(() => {
         npcSpeaking = false;
         
@@ -741,17 +768,25 @@ function loadNPCAnimations() {
             npcAnimations['talking'].fadeOut(0.5);
             npcAnimations['idle'].reset().fadeIn(0.5).play();
         }
-    }, text.length * 100); // Duration based on text length
+    }, speakDuration);
 }
-        
-        function animateNPCSpeaking() {
-            // Placeholder for lip sync and animation logic
-            // This would be replaced with actual animation control for the NPC avatar
-            
-            // Wiggle the NPC for now
-           
-            
-        }
+
+//  handle TTS with speak.js
+function speakText(text) {
+    try {
+        // Configure speak.js options
+        speak.speak(text, {
+            amplitude: 100,      // 0-100
+            pitch: 50,           // 0-100
+            speed: 175,          // words per minute
+            voice: 'en/en-us',   // language/dialect
+            wordgap: 0           // gap between words in ms
+        });
+    } catch (e) {
+        console.error('Error using speak.js:', e);
+    }
+}       
+       
         
         function updateNPCMovement() {
             if (!npcAvatar || !userAvatar) return;
