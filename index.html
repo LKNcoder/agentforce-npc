@@ -292,8 +292,9 @@
             const sky = new THREE.Mesh(skyGeometry, skyMaterial);
             scene.add(sky);
         }
+      
         
-        function setupControllers() {
+    function setupControllers() {
     // Controller setup for VR
     controller1 = renderer.xr.getController(0);
     controller1.addEventListener('connected', function(event) {
@@ -306,9 +307,8 @@
         console.log(`Controller 1 connected: ${xrData.handedness}`);
     });
     
-   
-    
-    scene.add(controller1);
+    // Add to camera rig instead of scene
+    cameraRig.add(controller1);
     
     // Same for controller 2
     controller2 = renderer.xr.getController(1);
@@ -322,23 +322,21 @@
         console.log(`Controller 2 connected: ${xrData.handedness}`);
     });
     
-    
-    
-    scene.add(controller2);
-    
-    // Keep the rest of the function the same
-    window.addEventListener('gamepadconnected', handleGamepadConnected);
+    // Add to camera rig instead of scene
+    cameraRig.add(controller2);
     
     // Controller models
     const controllerModelFactory = new XRControllerModelFactory();
     
     const controllerGrip1 = renderer.xr.getControllerGrip(0);
     controllerGrip1.add(controllerModelFactory.createControllerModel(controllerGrip1));
-    scene.add(controllerGrip1);
+    // Add grip to rig too
+    cameraRig.add(controllerGrip1);
     
     const controllerGrip2 = renderer.xr.getControllerGrip(1);
     controllerGrip2.add(controllerModelFactory.createControllerModel(controllerGrip2));
-    scene.add(controllerGrip2);
+    // Add grip to rig too
+    cameraRig.add(controllerGrip2);
 
     const rayGeometry = new THREE.BufferGeometry().setFromPoints([
         new THREE.Vector3(0, 0, 0),
