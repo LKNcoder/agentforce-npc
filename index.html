@@ -129,6 +129,10 @@
         let lipSyncInterval = null;
         let morphTargetDict = null;
         let blinkInterval = null;
+
+        let pingSound;
+        let pingInterval;
+
         let eyeBlinkMorphTargets = {
         left: 'eyeBlinkLeft',  // Adjust these names based on your model
         right: 'eyeBlinkRight'
@@ -146,6 +150,8 @@
     lookOutLeft: 'eyeLookOutLeft',
     lookOutRight: 'eyeLookOutRight'
 };
+
+
 
         // Viseme definitions (standard set used by Rhubarb)
     const visemes = {
@@ -287,7 +293,7 @@ const visemeMapping = {
 
             addVisemeDebugDisplay();
 
-            
+            setupPingSound(); 
             
             // Load avatar models
              loadAvatarModels();
@@ -710,6 +716,39 @@ npcAvatar.traverse(function(child) {
 });
 }
 
+
+
+
+function setupPingSound() {
+    // Create an audio loader
+    const audioLoader = new THREE.AudioLoader();
+    
+    // Load the ping sound
+    audioLoader.load('ping.mp3', function(buffer) {
+        console.log('Ping sound loaded successfully');
+        
+        // Create a positional audio source
+        pingSound = new THREE.Audio(audioListener);
+        pingSound.setBuffer(buffer);
+        pingSound.setVolume(0.5);
+        
+        // Start playing ping every 10 seconds
+        pingInterval = setInterval(() => {
+            if (pingSound && !pingSound.isPlaying) {
+                console.log('Playing ping sound');
+                pingSound.play();
+            }
+        }, 10000);
+    }, 
+    // onProgress callback
+    function(xhr) {
+        console.log('Ping sound loading: ' + (xhr.loaded / xhr.total * 100) + '%');
+    },
+    // onError callback
+    function(err) {
+        console.error('Error loading ping sound:', err);
+    });
+}
 
 
 function addSpontaneousSpeech() {
@@ -1851,6 +1890,8 @@ function handleVRSessionStart() {
             source.buffer = silentSound;
             source.connect(audioContext.destination);
             source.start();
+
+            setupPingSound(); // Setup ping sound 
             
             // Test that speech works
             speakText("Audio system initialized");
