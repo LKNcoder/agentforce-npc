@@ -680,6 +680,8 @@ function rotatePlayer(turnX) {
         startEyeTracking();
         startBlinking();
 
+        setupSpontaneousSpeech();
+
         // Remove placeholder avatars completely once real model is loaded
         scene.traverse(object => {
             if (object.userData && object.userData.isPlaceholder) {
@@ -706,6 +708,53 @@ npcAvatar.traverse(function(child) {
         });
     }
 });
+}
+
+
+
+function addSpontaneousSpeech() {
+    // Check if already speaking or if speech is currently disabled
+    if (npcSpeaking || !npcAvatar) return;
+    
+    // Set of possible spontaneous phrases
+    const phrases = [
+        "Welcome to our virtual store! Looking for anything specific?",
+        "Let me know if you need any help finding products.",
+        "We've got some great deals today! Want to hear about them?",
+        "Feel free to look around or ask me questions about our products.",
+        "Have you seen our newest items? They just arrived yesterday.",
+        "I'm here to help! Just ask if you have any questions.",
+        "Did you know we offer free shipping on orders over $50?",
+        "Thanks for visiting our virtual storefront today!",
+        "Our most popular item is on sale this week."
+    ];
+    
+    // Select a random phrase
+    const randomPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+    
+    // Make the NPC speak
+    npcSpeak(randomPhrase);
+    
+    console.log("NPC initiated conversation:", randomPhrase);
+}
+
+
+
+// setup the spontaneous speech timer
+function setupSpontaneousSpeech() {
+    // First short delay before the NPC's first spontaneous speech
+    setTimeout(() => {
+        // Initial greeting after loading
+        npcSpeak("Hello! Welcome to our virtual store. I'm your assistant today.");
+        
+        // Set up recurring random speech with varying intervals
+        setInterval(() => {
+            // Only speak if not already speaking and with some randomness
+            if (!npcSpeaking && Math.random() < 0.7) { // 70% chance to speak when interval triggers
+                addSpontaneousSpeech();
+            }
+        }, 25000 + Math.random() * 20000); // Random interval between 25-45 seconds
+    }, 5000); // Initial 5-second delay before first greeting
 }
 
 
