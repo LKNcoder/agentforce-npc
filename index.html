@@ -144,7 +144,36 @@
           cameraRig.add(camera);
           scene.add(cameraRig);
 
-          
+
+
+// testing keypresses
+          window.addEventListener('keydown', function(event) {
+    // Only in non-VR mode
+    if (renderer.xr.isPresenting) return;
+    
+    const keySpeed = 0.1;
+    
+    switch(event.key) {
+        case 'ArrowUp':
+            movePlayer(0, -1 * keySpeed);
+            break;
+        case 'ArrowDown':
+            movePlayer(0, 1 * keySpeed);
+            break;
+        case 'ArrowLeft':
+            movePlayer(-1 * keySpeed, 0);
+            break;
+        case 'ArrowRight':
+            movePlayer(1 * keySpeed, 0);
+            break;
+        case 'q':
+            rotatePlayer(-1 * keySpeed);
+            break;
+        case 'e':
+            rotatePlayer(1 * keySpeed);
+            break;
+    }
+});
             
 
             // Set up renderer
@@ -296,41 +325,45 @@ function processControllerInput() {
     const session = renderer.xr.getSession();
     if (!session) return;
     
-    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    // Get input sources directly from the XR session
+    const inputSources = Array.from(session.inputSources);
     
     // Reset movement values
     thumbstickMoveX = 0;
     thumbstickMoveY = 0;
     thumbstickTurnX = 0;
     
-    for (let i = 0; i < gamepads.length; i++) {
-        const gamepad = gamepads[i];
+    inputSources.forEach(inputSource => {
+        // Skip if no gamepad
+        if (!inputSource.gamepad) return;
         
-        if (gamepad && gamepad.connected) {
-            const axes = gamepad.axes;
+        const axes = inputSource.gamepad.axes;
+        if (!axes || axes.length < 2) return;
+        
+        // Apply deadzone
+        const axisX = Math.abs(axes[0]) > 0.15 ? axes[0] : 0;
+        const axisY = Math.abs(axes[1]) > 0.15 ? axes[1] : 0;
+        
+        // Left controller controls movement
+        if (inputSource.handedness === 'left') {
+            thumbstickMoveX = axisX;
+            thumbstickMoveY = axisY;
             
-            if (axes && axes.length >= 4) {
-                // Get movement from left controller
-                if (gamepad.hand === 'left' || i === 0) {
-                    thumbstickMoveX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0;
-                    thumbstickMoveY = Math.abs(axes[1]) > 0.1 ? axes[1] : 0;
-                    
-                    // Apply movement immediately
-                    if (thumbstickMoveX !== 0 || thumbstickMoveY !== 0) {
-                        movePlayer(thumbstickMoveX, thumbstickMoveY);
-                    }
-                }
-                // Get rotation from right controller
-                else if (gamepad.hand === 'right' || i === 1) {
-                    thumbstickTurnX = Math.abs(axes[0]) > 0.1 ? axes[0] : 0;
-                    
-                    if (thumbstickTurnX !== 0) {
-                        rotatePlayer(thumbstickTurnX);
-                    }
-                }
+            if (axisX !== 0 || axisY !== 0) {
+                movePlayer(axisX, axisY);
+                console.log(`LEFT STICK: X=${axisX.toFixed(2)}, Y=${axisY.toFixed(2)}`);
             }
         }
-    }
+        // Right controller controls rotation
+        else if (inputSource.handedness === 'right') {
+            thumbstickTurnX = axisX;
+            
+            if (axisX !== 0) {
+                rotatePlayer(axisX);
+                console.log(`RIGHT STICK: X=${axisX.toFixed(2)}`);
+            }
+        }
+    });
 }
 
 function movePlayer(moveX, moveY) {
@@ -343,22 +376,32 @@ function movePlayer(moveX, moveY) {
     right.applyQuaternion(camera.quaternion);
     right.normalize();
     
-    // Increase movement factor to make it more noticeable
-    const moveFactor = 0.2; // Increased from 0.05
+    // Increase movement factor significantly
+    const moveFactor = 0.5; // Much higher for more noticeable movement
     
     // Forward/backward movement
     if (moveY !== 0) {
-        cameraRig.position.x -= direction.x * moveY * moveFactor;
-        cameraRig.position.z -= direction.z * moveY * moveFactor;
+        const moveAmount = -direction.multiplyScalar(moveY * moveFactor);
+        cameraRig.position.add(moveAmount);
         console.log('MOVING F/B:', cameraRig.position.toArray());
     }
     
     // Left/right movement
     if (moveX !== 0) {
-        cameraRig.position.x += right.x * moveX * moveFactor;
-        cameraRig.position.z += right.z * moveX * moveFactor;
+        const strafeAmount = right.multiplyScalar(moveX * moveFactor);
+        cameraRig.position.add(strafeAmount);
         console.log('MOVING L/R:', cameraRig.position.toArray());
     }
+    
+    // Add a visual indicator of movement in world space
+    const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.05, 8, 8),
+        new THREE.MeshBasicMaterial({color: 0xff0000})
+    );
+    marker.position.copy(cameraRig.position);
+    marker.position.y = 0.05;
+    scene.add(marker);
+    setTimeout(() => scene.remove(marker), 5000);
 }
 
 function rotatePlayer(turnX) {
@@ -1136,12 +1179,17 @@ function handleVRSessionStart() {
     
     // Force NPC animations to play
     if (npcAvatar && npcMixer && npcAnimations['idle']) {
-        // Reset and explicitly play the idle animation
         npcAnimations['idle'].reset().setEffectiveWeight(1.0).play();
-        
-        // Force an update of the mixer to apply the animation immediately
         npcMixer.update(0);
     }
+    
+    // Reset camera rig position when entering VR
+    cameraRig.position.set(0, 0, 0);
+    
+    // Make sure camera is at the right height in the rig
+    camera.position.y = userHeight;
+    camera.position.x = 0;
+    camera.position.z = 0;
     
     // Hide UI elements that shouldn't appear in VR
     muteButton.visible = false;
