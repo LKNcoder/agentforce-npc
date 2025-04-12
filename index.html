@@ -205,6 +205,19 @@ const visemeMapping = {
 
 
 
+// test if speak.js is loaded          
+          window.addEventListener('DOMContentLoaded', () => {
+    // Check if speak.js is properly loaded
+    if (typeof speak === 'undefined') {
+        console.error("speak.js is not loaded properly!");
+        alert("Text-to-speech library failed to load. Audio may not work.");
+    } else {
+        console.log("speak.js loaded successfully");
+    }
+});
+
+
+
 // testing keypresses
           window.addEventListener('keydown', function(event) {
     // Only in non-VR mode
@@ -1266,11 +1279,14 @@ function updateEyePosition(targetWorldPosition = null) {
     
     // If no target provided, use camera position (player's eyes)
     if (!targetWorldPosition) {
+        // Force matrix update to ensure correct world position
+        camera.updateMatrixWorld(true);
         targetWorldPosition = new THREE.Vector3();
         camera.getWorldPosition(targetWorldPosition);
     }
     
     // Get NPC's head position (approximate)
+    npcAvatar.updateMatrixWorld(true);
     const npcHeadPosition = new THREE.Vector3();
     npcAvatar.getWorldPosition(npcHeadPosition);
     npcHeadPosition.y += 1.6; // Adjust to approximate eye level
@@ -1775,6 +1791,22 @@ function updateVolumeIndicator() {
 
 function handleVRSessionStart() {
     console.log('VR session started - ensuring animations are running');
+
+    // Initialize audio context immediately after user interaction
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+            // Play a silent sound to unlock audio
+            const silentSound = audioContext.createBuffer(1, 1, 22050);
+            const source = audioContext.createBufferSource();
+            source.buffer = silentSound;
+            source.connect(audioContext.destination);
+            source.start();
+            
+            // Test that speech works
+            speakText("Audio system initialized");
+        });
+    }
     
     // Force NPC animations to play
     if (npcAvatar && npcMixer && npcAnimations['idle']) {
