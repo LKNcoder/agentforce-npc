@@ -61,8 +61,7 @@
     <div class="loading" id="loadingScreen">Loading... Please wait</div>
 
     <!-- Import libraries via CDN -->
-    <script src="https://cdn.jsdelivr.net/gh/kripken/speak.js@master/speakClient.js"></script>
-    <script src="https://cdn.jsdelivr.net/gh/kripken/speak.js@master/speak.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/piper-tts@latest/dist/piper-tts.js"></script>
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
         {
@@ -209,16 +208,15 @@ const visemeMapping = {
           cameraRig.add(camera);
           scene.add(cameraRig);
 
+            
 
-
-// test if speak.js is loaded          
           window.addEventListener('DOMContentLoaded', () => {
-    // Check if speak.js is properly loaded
-    if (typeof speak === 'undefined') {
-        console.error("speak.js is not loaded properly!");
+    // Check if piperTTS is properly loaded
+    if (typeof PiperTTS === 'undefined') {
+        console.error("piperTTS is not loaded properly!");
         alert("Text-to-speech library failed to load. Audio may not work.");
     } else {
-        console.log("speak.js loaded successfully");
+        console.log("piperTTS loaded successfully");
     }
 });
 
@@ -293,6 +291,8 @@ const visemeMapping = {
 
             addVisemeDebugDisplay();
 
+            initPiperTTS();
+
             setupPingSound(); 
             
             // Load avatar models
@@ -320,6 +320,31 @@ const visemeMapping = {
         npcAvatar.add(positionalAudio);
     }
     }
+
+
+
+    function initPiperTTS() {
+    try {
+        window.piperTTS = new PiperTTS();
+        
+        // Use the small model instead of medium
+        window.piperTTS.loadVoice("en_US-libritts-small")
+            .then(() => {
+                console.log("Small piperTTS voice model loaded successfully");
+                npcSpeak("Voice system initialized with small voice model");
+            }).catch(err => {
+                console.error("Failed to load small voice model:", err);
+                
+                // Try an even smaller model as fallback
+                console.log("Trying tiny fallback voice...");
+                window.piperTTS.loadVoice("en_US-libritts-tiny")
+                    .then(() => npcSpeak("Voice system initialized with tiny fallback voice"));
+            });
+    } catch (e) {
+        console.error("Error initializing piperTTS:", e);
+    }
+}
+
 
         function setupLighting() {
             // Ambient light
@@ -947,7 +972,7 @@ function loadNPCAnimations() {
     startLipSync(text);
     
     // Use speak.js for TTS
-    speakText(text);
+    const speakPromise = speakText(text);
     
      // If we have a talking animation, use it
      if (npcAnimations['talking']) {
@@ -975,18 +1000,56 @@ function loadNPCAnimations() {
 //  handle TTS with speak.js
 function speakText(text) {
     try {
-        // Configure speak.js options
-        speak.speak(text, {
-            amplitude: 100,      // 0-100
-            pitch: 50,           // 0-100
-            speed: 175,          // words per minute
-            voice: 'en/en-us',   // language/dialect
-            wordgap: 0           // gap between words in ms
+        if (!window.piperTTS) {
+            window.piperTTS = new PiperTTS({
+                // Configure with your preferred voice model
+                // You can set up multiple voice options
+                voice: "en_US-libritts-high",
+                // Default options
+                sampleRate: 22050,
+                speakerId: 0
+            });
+        }
+
+        // Generate audio from text
+        window.piperTTS.synthesize(text).then(audioData => {
+            // Create an audio buffer from the generated data
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const buffer = audioContext.createBuffer(1, audioData.length, 22050);
+            const channelData = buffer.getChannelData(0);
+            
+            // Copy audioData to channelData
+            for (let i = 0; i < audioData.length; i++) {
+                channelData[i] = audioData[i];
+            }
+            
+            // Create a source node
+            const source = audioContext.createBufferSource();
+            source.buffer = buffer;
+            
+            // Connect to audio output
+            source.connect(audioContext.destination);
+            
+            // If we have positional audio set up, use it
+            if (positionalAudio && positionalAudio.context && npcAvatar) {
+                positionalAudio.setBuffer(buffer);
+                positionalAudio.play();
+            } else {
+                // Otherwise play directly
+                source.start();
+            }
+            
+            // Return the total duration for timing purposes
+            return buffer.duration;
+        }).catch(err => {
+            console.error("piperTTS synthesis failed:", err);
+            return 0;
         });
     } catch (e) {
-        console.error('Error using speak.js:', e);
+        console.error('Error using piperTTS:', e);
+        return 0;
     }
-}       
+}     
 
 function generateLipSyncFromText(text) {
     const words = text.toLowerCase().trim().split(/\s+/);
