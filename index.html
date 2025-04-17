@@ -128,6 +128,7 @@
         let lipSyncInterval = null;
         let morphTargetDict = null;
         let blinkInterval = null;
+        let vrSpeechBubble;
 
         let pingSound;
         let pingInterval;
@@ -288,6 +289,8 @@ const visemeMapping = {
             startRecordingContinuous();
             
             createTeleportMarker();
+
+            createVRSpeechBubble();
 
             addVisemeDebugDisplay();
 
@@ -965,8 +968,12 @@ function loadNPCAnimations() {
     function npcSpeak(text) {
     npcSpeaking = true;
 
-    // Show text in speech bubble
-    showSpeechBubble(text);
+      // Show text in appropriate speech bubble
+      if (renderer.xr.isPresenting) {
+        updateVRSpeechBubble(text);
+    } else {
+        showSpeechBubble(text);
+    }
 
     // Start lip sync animation
     startLipSync(text);
@@ -1208,6 +1215,130 @@ function setViseme(visemeKey) {
     });
 }
        
+
+// Create 3D speech bubble
+function createVRSpeechBubble() {
+    // Create group to hold the speech bubble
+    vrSpeechBubble = new THREE.Group();
+    
+    // Create canvas for text
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 256;
+    
+    // Create texture from canvas
+    const texture = new THREE.CanvasTexture(canvas);
+    
+    // Create background plane (white background)
+    const bubbleGeometry = new THREE.PlaneGeometry(1, 0.5);
+    const bubbleMaterial = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        side: THREE.DoubleSide
+    });
+    const bubblePlane = new THREE.Mesh(bubbleGeometry, bubbleMaterial);
+    
+    // Add to group
+    vrSpeechBubble.add(bubblePlane);
+    
+    // Store context and texture for updates
+    vrSpeechBubble.userData = {
+        canvas: canvas,
+        context: context,
+        texture: texture
+    };
+    
+    // Hide initially
+    vrSpeechBubble.visible = false;
+    
+    // Add to scene
+    scene.add(vrSpeechBubble);
+}
+
+// Update text on VR speech bubble
+function updateVRSpeechBubble(text) {
+    if (!vrSpeechBubble) return;
+    
+    const { canvas, context, texture } = vrSpeechBubble.userData;
+    
+    // Clear canvas
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw white background with rounded corners
+    context.fillStyle = 'white';
+    roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
+    
+    // Set up text properties
+    context.font = 'bold 32px Arial, Helvetica, sans-serif';
+    context.fillStyle = 'black';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    
+    // Handle multi-line text
+    const words = text.split(' ');
+    let lines = [];
+    let currentLine = words[0];
+    
+    for (let i = 1; i < words.length; i++) {
+        const testLine = currentLine + ' ' + words[i];
+        const metrics = context.measureText(testLine);
+        if (metrics.width > canvas.width - 60) {
+            lines.push(currentLine);
+            currentLine = words[i];
+        } else {
+            currentLine = testLine;
+        }
+    }
+    lines.push(currentLine);
+    
+    // Draw text lines
+    const lineHeight = 40;
+    const startY = (canvas.height - (lines.length * lineHeight)) / 2;
+    
+    lines.forEach((line, index) => {
+        context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
+    });
+    
+    // Update texture
+    texture.needsUpdate = true;
+    
+    // Position above NPC's head if we have an NPC avatar
+    if (npcAvatar) {
+        // Force matrix update to ensure correct position
+        npcAvatar.updateWorldMatrix(true, false);
+        
+        // Get NPC head position
+        const headPosition = new THREE.Vector3(0, 1.7, 0); // Approximate head position
+        headPosition.applyMatrix4(npcAvatar.matrixWorld);
+        
+        // Position speech bubble above head
+        vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+    }
+    
+    // Show the speech bubble
+    vrSpeechBubble.visible = true;
+}
+
+// Helper function to draw rounded rectangle
+function roundRect(ctx, x, y, width, height, radius, fill) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.lineTo(x + width - radius, y);
+    ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+    ctx.lineTo(x + width, y + height - radius);
+    ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+    ctx.lineTo(x + radius, y + height);
+    ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+    ctx.lineTo(x, y + radius);
+    ctx.quadraticCurveTo(x, y, x + radius, y);
+    ctx.closePath();
+    if (fill) {
+        ctx.fill();
+    }
+}
+
+
 
 
 // display current viseme state for testing and debugging
@@ -1897,6 +2028,11 @@ function updateVolumeIndicator() {
         if (typeof updateVolumeIndicator === 'function') {
             updateVolumeIndicator();
         }
+
+         // Make VR speech bubble face the camera
+    if (vrSpeechBubble && vrSpeechBubble.visible) {
+        vrSpeechBubble.lookAt(camera.position);
+    }
         
         // Update NPC movement to follow user
         updateNPCMovement();
