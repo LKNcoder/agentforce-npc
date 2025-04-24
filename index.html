@@ -1125,18 +1125,18 @@ function startLipSync(text) {
     // Stop any existing lip sync
     stopLipSync();
     
-    // Generate timeline from text
-    lipSyncTimeline = generateLipSyncFromText(text);
-    
-    // Start time tracking
+    // Set up initial state - we'll generate the timeline later when we have duration
     lipSyncStartTime = performance.now() / 1000;
     lipSyncActive = true;
     
-    // Set initial mouth shape
+    // Set initial mouth shape to neutral
     setViseme('X');
     
     // Create interval to update mouth shape
     lipSyncInterval = setInterval(updateMouthShape, 16.67); // ~60fps
+    
+    // Note: We no longer generate timeline here - generateEnhancedLipSync will do that
+    // when audio duration is available from the TTS engine
 }
 
 function stopLipSync() {
