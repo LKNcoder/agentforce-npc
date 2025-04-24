@@ -1013,63 +1013,7 @@ function playAudioFile(filename) {
     });
 }
 
-//  handle TTS with speak.js
-function speakText(text) {
-    return new Promise((resolve, reject) => {
-        const apiKey = "sk_ccb7cffcb7b806aa6563e86fcfce64c0614926e615846196"; 
-        const voiceId = "AZnzlk1XvdvUeBnXmlld"; // Enthusiastic female voice
-        
-        console.log("Generating ElevenLabs speech for: ", text);
-        
-        fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'xi-api-key': apiKey
-            },
-            body: JSON.stringify({
-                text: text,
-                model_id: "eleven_monolingual_v1",
-                voice_settings: { stability: 0.5, similarity_boost: 0.5 },
-                return_phonemes: true // Request phoneme data
-            })
-        })
-        .then(response => {
-            if (!response.ok) throw new Error("API request failed");
-            return response.blob();
-        })
-        .then(audioBlob => {
-            // Create a URL for the audio blob
-            const audioUrl = URL.createObjectURL(audioBlob);
-            const audio = new Audio(audioUrl);
-            
-            // Set up audio callbacks
-            audio.oncanplaythrough = () => {
-                // Record start time for lip sync
-                lipSyncStartTime = performance.now() / 1000;
-                
-                // Generate approximate lip sync data (since we don't have real phoneme data)
-                generateEnhancedLipSync(text, audio.duration);
-                
-                // Start playback
-                audio.play();
-            };
-            
-            audio.onended = () => {
-                resolve(audio.duration);
-            };
-            
-            audio.onerror = (e) => {
-                console.error("Audio playback error:", e);
-                reject(new Error("Audio playback failed"));
-            };
-        })
-        .catch(error => {
-            console.error('Error generating speech:', error);
-            reject(error);
-        });
-    });
-}
+
 
 // Helper function to convert base64 to blob
 function base64ToBlob(base64, mimeType) {
@@ -1946,12 +1890,16 @@ function createMuteToggle() {
 
 
 
+
 function speakText(text) {
     return new Promise((resolve, reject) => {
-        // Generate a cache key from the text
-        const cacheKey = text.trim().toLowerCase();
+        const apiKey = "sk_ccb7cffcb7b806aa6563e86fcfce64c0614926e615846196"; 
+        const voiceId = "AZnzlk1XvdvUeBnXmlld"; // Enthusiastic female voice
+        
+        console.log("Generating ElevenLabs speech for: ", text);
         
         // Check if we have this phrase cached
+        const cacheKey = text.trim().toLowerCase();
         if (devMode && ttsCache[cacheKey]) {
             console.log("Using cached audio for:", text);
             
@@ -2009,12 +1957,6 @@ function speakText(text) {
             text = randomPhrase; // Use the random phrase for the API call
         }
         
-        // Regular API call for non-cached phrases or initial cache population
-        const apiKey = "sk_ccb7cffcb7b806aa6563e86fcfce64c0614926e615846196"; 
-        const voiceId = "AZnzlk1XvdvUeBnXmlld"; // Enthusiastic female voice
-        
-        console.log("Generating ElevenLabs speech for:", text);
-        
         fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
             method: 'POST',
             headers: {
@@ -2024,7 +1966,8 @@ function speakText(text) {
             body: JSON.stringify({
                 text: text,
                 model_id: "eleven_monolingual_v1",
-                voice_settings: { stability: 0.5, similarity_boost: 0.5 }
+                voice_settings: { stability: 0.5, similarity_boost: 0.5 },
+                return_phonemes: true // Request phoneme data
             })
         })
         .then(response => {
