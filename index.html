@@ -734,65 +734,30 @@
         </div>
     </footer>
 
+
     <!-- VR Demo Link Script -->
     <script>
-        document.querySelectorAll('.vr-demo-btn').forEach(button => {
-            button.addEventListener('click', function(e) {
-                e.preventDefault();
-                
-                // Create modal for messages
-                const modal = document.createElement('div');
-                modal.style.position = 'fixed';
-                modal.style.top = '0';
-                modal.style.left = '0';
-                modal.style.width = '100%';
-                modal.style.height = '100%';
-                modal.style.backgroundColor = 'rgba(0,0,0,0.8)';
-                modal.style.color = 'white';
-                modal.style.display = 'flex';
-                modal.style.alignItems = 'center';
-                modal.style.justifyContent = 'center';
-                modal.style.fontSize = '24px';
-                modal.style.zIndex = '9999';
-                
-                // Check if WebXR is supported
-                if ('xr' in navigator) {
-                    navigator.xr.isSessionSupported('immersive-vr')
-                        .then((supported) => {
-                            if (supported) {
-                                // VR is supported
-                                modal.innerHTML = `
-                                    <div>
-                                        <h2 style="margin-bottom: 20px; text-align: center;">Loading VR Experience</h2>
-                                        <p style="text-align: center;">Our sales representative will assist you shortly...</p>
-                                    </div>
-                                `;
-                                document.body.appendChild(modal);
-                                
-                                setTimeout(() => {
-                                    // Show VR container instead of navigating
-                                    document.getElementById('vr-container').style.display = 'block';
-                                    document.body.removeChild(modal);
-                                    
-                                    // Initialize VR experience
-                                    initVRExperience();
-                                }, 1500);
-                            } else {
-                                // WebXR is supported but immersive-vr is not
-                                showVRNotSupportedMessage(modal);
-                            }
-                        })
-                        .catch(error => {
-                            // Error checking VR support
-                            console.error('Error checking VR support:', error);
-                            showVRNotSupportedMessage(modal);
-                        });
-                } else {
-                    // WebXR is not supported at all
-                    showVRNotSupportedMessage(modal);
-                }
-            });
-        });
+
+
+// Single-click VR entry
+document.querySelectorAll('.vr-demo-btn').forEach(button => {
+    button.addEventListener('click', function(e) {
+        e.preventDefault();
+        
+        // Show the VR container right away
+        const vrContainer = document.getElementById('vr-container');
+        vrContainer.style.display = 'block';
+        
+        if (vrSceneReady) {
+            // Scene is already loaded, enter VR immediately
+            enterVRMode();
+        } else {
+            // Show loading screen and initialize
+            document.getElementById('loadingScreen').style.display = 'flex';
+            initVRExperience(false); // false = not background loading, enter VR when ready
+        }
+    });
+});
 
         // Helper function to show VR not supported message
         function showVRNotSupportedMessage(modal) {
@@ -811,6 +776,74 @@
                 document.body.removeChild(modal);
             });
         }
+
+
+// Begin preloading VR environment as soon as the page loads
+document.addEventListener('DOMContentLoaded', function() {
+    // Preload VR assets in the background without showing the container
+    preloadVRAssets();
+});
+
+// Preload function that sets up the scene without showing it
+function preloadVRAssets() {
+    // Start initializing VR in the background
+    setTimeout(() => {
+        // Only initialize if not already done
+        if (!vrSceneReady) {
+            console.log('Preloading VR assets in background...');
+            initVRExperience(true); // true = background loading only
+        }
+    }, 2000); // Small delay to let the page finish loading first
+}
+
+
+// Add the missing enterVRMode function (referenced but not defined in your code)
+function enterVRMode() {
+    // Confirm WebXR is available
+    if (!navigator.xr) {
+        const modal = document.createElement('div');
+        showVRNotSupportedMessage(modal);
+        return;
+    }
+
+    // Check if VR is supported and enter with a single permission request
+    navigator.xr.isSessionSupported('immersive-vr').then(supported => {
+        if (supported) {
+            // Request VR session directly - single permission prompt
+            navigator.xr.requestSession('immersive-vr', {
+                optionalFeatures: ['local-floor', 'bounded-floor']
+            }).then(session => {
+                // Set the session on our renderer
+                renderer.xr.setSession(session);
+                
+                // Hide loading screen
+                document.getElementById('loadingScreen').style.display = 'none';
+                
+                // Show welcome message shortly after entering VR
+                setTimeout(() => {
+                    showSpeechBubble("Welcome to Sunnyville Playscapes VR! Look around our playground models.");
+                }, 1000);
+            })
+            .catch(error => {
+                console.error('Error entering VR:', error);
+                document.getElementById('loadingScreen').style.display = 'none';
+            });
+        } else {
+            // VR not supported on this device
+            const modal = document.createElement('div');
+            showVRNotSupportedMessage(modal);
+        }
+    });
+}
+
+
+
+
+
+
+
+
+
 
         // Quote button functionality
         document.querySelectorAll('.quote-btn').forEach(button => {
@@ -915,6 +948,9 @@
         let teleportMarker;
         let isTeleporting = false;
         let teleportPoint = new THREE.Vector3();
+
+        let vrSceneReady = false;
+        let vrAssetsLoaded = false;
         
         // Set up exit button
         document.getElementById('vr-exit-button').addEventListener('click', exitVRExperience);
@@ -963,12 +999,7 @@
             renderer.shadowMap.enabled = true;
             document.getElementById('vr-container').appendChild(renderer.domElement);
             
-            // Add VR button
-            document.getElementById('vr-container').appendChild(
-                VRButton.createButton(renderer, {
-                    optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
-                })
-            );
+           
             
             // Set up lighting, environment, etc.
             setupLighting();
