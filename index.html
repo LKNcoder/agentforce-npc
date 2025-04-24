@@ -130,7 +130,14 @@
         let blinkInterval = null;
         let vrSpeechBubble;
 
-       
+        let ttsCache = {};  // In-memory cache
+    let devMode = true; // Set to true to use cached responses
+    let preloadedPhrases = [
+    "Hello! Welcome to our virtual store. I'm your assistant today.",
+    "Can I help you find anything specific?",
+    "Let me show you our newest products.",
+    "Thank you for visiting our store today!"
+];
 
         let eyeBlinkMorphTargets = {
         left: 'eyeBlinkLeft',  // Adjust these names based on your model
@@ -208,7 +215,7 @@ const visemeMapping = {
           cameraRig.add(camera);
           scene.add(cameraRig);
 
-            
+          initTTSCache(); 
 
           window.addEventListener('DOMContentLoaded', () => {
     
@@ -754,16 +761,21 @@ function addSpontaneousSpeech() {
 function setupSpontaneousSpeech() {
     // First short delay before the NPC's first spontaneous speech
     setTimeout(() => {
-        // Initial greeting after loading
-        npcSpeak("Hello! Welcome to our virtual store. I'm your assistant today.");
+        // Initial greeting using downloaded audio file
+        showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+        playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
+            console.error("Failed to play welcome audio:", err);
+            // Fallback to TTS if audio file fails
+            npcSpeak("Hello!  Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+        });
         
         // Set up recurring random speech with varying intervals
         setInterval(() => {
             // Only speak if not already speaking and with some randomness
-            if (!npcSpeaking && Math.random() < 0.7) { // 70% chance to speak when interval triggers
+            if (!npcSpeaking && Math.random() < 0.7) {
                 addSpontaneousSpeech();
             }
-        }, 25000 + Math.random() * 20000); // Random interval between 25-45 seconds
+        }, 25000 + Math.random() * 20000);
     }, 5000); // Initial 5-second delay before first greeting
 }
 
@@ -951,9 +963,54 @@ function loadNPCAnimations() {
 }
 
 
-// Test the ElevenLabs voice
-function testVoice() {
-    npcSpeak("Hello World!  Can you hear me?");
+function playAudioFile(filename) {
+    return new Promise((resolve, reject) => {
+        const audio = new Audio(`./audio-cache/${filename}`);
+        
+        // Set up audio callbacks
+        audio.oncanplaythrough = () => {
+            // Start lip sync if needed
+            if (npcAvatar && !npcSpeaking) {
+                lipSyncStartTime = performance.now() / 1000;
+                
+                // Estimate duration for lip sync if not available yet
+                const estimatedDuration = audio.duration || 3.0;
+                generateEnhancedLipSync("Hello welcome to our virtual showroom", estimatedDuration);
+                
+                // Set NPC as speaking
+                npcSpeaking = true;
+                
+                // Use talking animation if available
+                if (npcAnimations['talking'] && npcAnimations['idle']) {
+                    npcAnimations['idle'].fadeOut(0.5);
+                    npcAnimations['talking'].reset().fadeIn(0.5).play();
+                }
+            }
+            
+            // Start playback
+            audio.play();
+        };
+        
+        audio.onended = () => {
+            // Reset NPC state
+            npcSpeaking = false;
+            stopLipSync();
+            
+            // Return to idle animation
+            if (npcAnimations['talking'] && npcAnimations['idle']) {
+                npcAnimations['talking'].fadeOut(0.5);
+                npcAnimations['idle'].reset().fadeIn(0.5).play();
+            }
+            
+            resolve(audio.duration);
+        };
+        
+        audio.onerror = (e) => {
+            console.error("Audio file playback error:", e);
+            npcSpeaking = false;
+            reject(new Error(`Failed to play audio file: ${filename}`));
+        };
+    });
 }
 
 //  handle TTS with speak.js
@@ -1885,6 +1942,230 @@ function createMuteToggle() {
 }   
 
 
+
+
+
+
+function speakText(text) {
+    return new Promise((resolve, reject) => {
+        // Generate a cache key from the text
+        const cacheKey = text.trim().toLowerCase();
+        
+        // Check if we have this phrase cached
+        if (devMode && ttsCache[cacheKey]) {
+            console.log("Using cached audio for:", text);
+            
+            // Play the cached audio
+            const audio = new Audio(ttsCache[cacheKey]);
+            
+            // Set up audio callbacks
+            audio.oncanplaythrough = () => {
+                // Record start time for lip sync
+                lipSyncStartTime = performance.now() / 1000;
+                
+                // Generate approximate lip sync data based on cached audio duration
+                generateEnhancedLipSync(text, audio.duration);
+                
+                // Start playback
+                audio.play();
+            };
+            
+            audio.onended = () => {
+                resolve(audio.duration);
+            };
+            
+            audio.onerror = (e) => {
+                console.error("Cached audio playback error:", e);
+                reject(new Error("Audio playback failed"));
+            };
+            
+            return;
+        }
+        
+        // If in dev mode but not cached, use a preloaded phrase instead
+        if (devMode) {
+            console.log("Dev mode: Using preloaded phrase instead of:", text);
+            const randomPhrase = preloadedPhrases[Math.floor(Math.random() * preloadedPhrases.length)];
+            
+            // If we've already fetched this phrase before, use it
+            if (ttsCache[randomPhrase.toLowerCase()]) {
+                const audio = new Audio(ttsCache[randomPhrase.toLowerCase()]);
+                
+                audio.oncanplaythrough = () => {
+                    lipSyncStartTime = performance.now() / 1000;
+                    generateEnhancedLipSync(text, audio.duration); // Use original text for lip sync
+                    audio.play();
+                };
+                
+                audio.onended = () => {
+                    resolve(audio.duration);
+                };
+                
+                return;
+            }
+            
+            // If no phrases are cached yet, we need to make an API call once
+            console.log("No cached phrases available, making initial API call for:", randomPhrase);
+            text = randomPhrase; // Use the random phrase for the API call
+        }
+        
+        // Regular API call for non-cached phrases or initial cache population
+        const apiKey = "sk_ccb7cffcb7b806aa6563e86fcfce64c0614926e615846196"; 
+        const voiceId = "AZnzlk1XvdvUeBnXmlld"; // Enthusiastic female voice
+        
+        console.log("Generating ElevenLabs speech for:", text);
+        
+        fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'xi-api-key': apiKey
+            },
+            body: JSON.stringify({
+                text: text,
+                model_id: "eleven_monolingual_v1",
+                voice_settings: { stability: 0.5, similarity_boost: 0.5 }
+            })
+        })
+        .then(response => {
+            if (!response.ok) throw new Error("API request failed");
+            return response.blob();
+        })
+        .then(audioBlob => {
+            // Create a URL for the audio blob
+            const audioUrl = URL.createObjectURL(audioBlob);
+            
+            // Cache the audio URL
+            ttsCache[text.trim().toLowerCase()] = audioUrl;
+            
+            // Also save to localStorage for persistence
+            saveCacheToStorage();
+            
+            const audio = new Audio(audioUrl);
+            
+            // Set up audio callbacks
+            audio.oncanplaythrough = () => {
+                lipSyncStartTime = performance.now() / 1000;
+                generateEnhancedLipSync(text, audio.duration);
+                audio.play();
+            };
+            
+            audio.onended = () => {
+                resolve(audio.duration);
+            };
+            
+            audio.onerror = (e) => {
+                console.error("Audio playback error:", e);
+                reject(new Error("Audio playback failed"));
+            };
+        })
+        .catch(error => {
+            console.error('Error generating speech:', error);
+            reject(error);
+        });
+    });
+}
+
+// Save cache to localStorage (stores URLs)
+function saveCacheToStorage() {
+    try {
+        // Just store the keys that we've cached
+        const cachedKeys = Object.keys(ttsCache);
+        localStorage.setItem('tts_cached_keys', JSON.stringify(cachedKeys));
+    } catch (e) {
+        console.warn('Failed to save cache to localStorage:', e);
+    }
+}
+
+// Load cache from localStorage on startup
+function loadCacheFromStorage() {
+    try {
+        const cachedKeys = JSON.parse(localStorage.getItem('tts_cached_keys') || '[]');
+        console.log(`Found ${cachedKeys.length} cached TTS phrases in storage`);
+        
+        // We'll load these lazily when needed rather than immediately
+    } catch (e) {
+        console.warn('Failed to load cache from localStorage:', e);
+    }
+}
+
+function initTTSCache() {
+    loadCacheFromStorage();
+    
+    // Create a dev mode toggle
+    createDevModeToggle();
+}
+
+function createDevModeToggle() {
+    // Create a simple button in the corner
+    const button = document.createElement('button');
+    button.textContent = devMode ? 'DEV MODE ON' : 'DEV MODE OFF';
+    button.style.position = 'fixed';
+    button.style.top = '10px';
+    button.style.right = '10px';
+    button.style.zIndex = '1000';
+    button.style.padding = '5px 10px';
+    button.style.background = devMode ? '#44ff44' : '#ff4444';
+    
+    button.onclick = () => {
+        devMode = !devMode;
+        button.textContent = devMode ? 'DEV MODE ON' : 'DEV MODE OFF';
+        button.style.background = devMode ? '#44ff44' : '#ff4444';
+        console.log(`Dev mode ${devMode ? 'enabled' : 'disabled'}`);
+    };
+    
+    document.body.appendChild(button);
+}
+
+// Function to pre-populate the cache with test phrases
+function preloadTestPhrases() {
+    if (Object.keys(ttsCache).length > 0) {
+        console.log("Cache already has phrases, skipping preload");
+        return;
+    }
+    
+    console.log("Preloading test phrases...");
+    
+    // Process one phrase at a time
+    let index = 0;
+    
+    function loadNextPhrase() {
+        if (index >= preloadedPhrases.length) {
+            console.log("Finished preloading all test phrases");
+            return;
+        }
+        
+        const phrase = preloadedPhrases[index];
+        console.log(`Preloading phrase ${index + 1}/${preloadedPhrases.length}: "${phrase}"`);
+        
+        // Call speakText with devMode temporarily disabled
+        const tempDevMode = devMode;
+        devMode = false;
+        
+        speakText(phrase)
+            .then(() => {
+                console.log(`Successfully cached phrase: "${phrase}"`);
+                index++;
+                setTimeout(loadNextPhrase, 500); // Small delay between phrases
+            })
+            .catch(err => {
+                console.error(`Failed to preload phrase: "${phrase}"`, err);
+                index++;
+                setTimeout(loadNextPhrase, 1000); // Longer delay after error
+            })
+            .finally(() => {
+                devMode = tempDevMode;
+            });
+    }
+    
+    loadNextPhrase();
+}
+
+
+
+
+
+
 // New function to start audio recording
 function startRecordingContinuous() {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -2243,6 +2524,31 @@ function createTeleportEffect(x, z) {
 
 
 
+
+
+function testTTSCache() {
+    // Force preloading of standard phrases
+    preloadTestPhrases();
+    
+    // Test accessing a cached phrase
+    setTimeout(() => {
+        console.log("Testing cached TTS playback");
+        npcSpeak("Hello! Welcome to our virtual store. I'm your assistant today.");
+    }, 5000);
+}
+
+// Call this after everything is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // Wait a bit for everything else to initialize
+    setTimeout(testTTSCache, 2000);
+});
+
+
+
+
+
+
+
 function handleVRSessionEnd() {
     // Make UI elements visible again when exiting VR
     if (muteButton) muteButton.visible = true;
@@ -2251,37 +2557,28 @@ function handleVRSessionEnd() {
 
         
 function quitApplication() {
-    showSpeechBubble('Exiting application...');
+    showSpeechBubble('Thanks for visiting! Goodbye!');
     
-    // Fade to black effect
-    const overlay = document.createElement('div');
-    overlay.style.position = 'fixed';
-    overlay.style.top = 0;
-    overlay.style.left = 0;
-    overlay.style.width = '100%';
-    overlay.style.height = '100%';
-    overlay.style.backgroundColor = 'black';
-    overlay.style.opacity = 0;
-    overlay.style.transition = 'opacity 1s';
-    overlay.style.zIndex = 1000;
-    document.body.appendChild(overlay);
-    
-    // Fade in then exit
-    setTimeout(() => {
-        overlay.style.opacity = 1;
-        
-        // After fade completes, close the application
-        setTimeout(() => {
-            // For browser context, show message and redirect
-            if (window.confirm('Exit application?')) {
-                window.close(); // Might not work in most browsers for security reasons
-                
-                // Fallback if window.close() fails
+    // Play goodbye audio and exit immediately after it completes
+    playAudioFile("thanks-for-visiting-goodbye-.mp3")
+        .then(() => {
+            // Immediately exit after audio completes
+            window.close();
+            
+            // Fallback if window.close() doesn't work
+            setTimeout(() => {
                 window.location.href = 'about:blank';
-            }
-        }, 1000);
-    }, 10);
+            }, 100);
+        })
+        .catch(err => {
+            console.error("Failed to play goodbye audio:", err);
+            // If audio fails, exit immediately
+            window.close();
+            setTimeout(() => window.location.href = 'about:blank', 100);
+        });
 }
+
+
 
     </script>
 </body>
