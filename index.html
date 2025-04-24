@@ -966,15 +966,21 @@ function enterVRMode() {
         }
         
         // Initialize VR experience when button is clicked
-        window.initVRExperience = function() {
-            loadingScreen = document.getElementById('loadingScreen');
-            speechBubble = document.getElementById('vr-speech-bubble');
-            
-            // Set up loading manager
-            loadingManager = new THREE.LoadingManager();
-            loadingManager.onLoad = () => {
-                loadingScreen.style.display = 'none';
-            };
+        window.initVRExperience = function(backgroundLoading = false) {
+    loadingScreen = document.getElementById('loadingScreen');
+    speechBubble = document.getElementById('vr-speech-bubble');
+    
+    // Set up loading manager
+    loadingManager = new THREE.LoadingManager();
+    loadingManager.onLoad = () => {
+        loadingScreen.style.display = 'none';
+        vrSceneReady = true;
+        
+        // If not background loading, enter VR mode immediately
+        if (!backgroundLoading) {
+            enterVRMode();
+        }
+    };
             
             // Initialize scene
             clock = new THREE.Clock();
