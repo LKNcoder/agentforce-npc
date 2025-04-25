@@ -759,24 +759,14 @@ function addSpontaneousSpeech() {
 
 // setup the spontaneous speech timer
 function setupSpontaneousSpeech() {
-    // First short delay before the NPC's first spontaneous speech
-    setTimeout(() => {
-        // Initial greeting using downloaded audio file
-        showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
-        playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
-            console.error("Failed to play welcome audio:", err);
-            // Fallback to TTS if audio file fails
-            npcSpeak("Hello!  Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
-        });
-        
-        // Set up recurring random speech with varying intervals
-        setInterval(() => {
-            // Only speak if not already speaking and with some randomness
-            if (!npcSpeaking && Math.random() < 0.7) {
-                addSpontaneousSpeech();
-            }
-        }, 25000 + Math.random() * 20000);
-    }, 5000); // Initial 5-second delay before first greeting
+    // Don't do the initial greeting here anymore
+    // Just set up the recurring speech timer
+    setInterval(() => {
+        // Only speak if not already speaking, with randomness, and in VR mode
+        if (!npcSpeaking && Math.random() < 0.7) {
+            addSpontaneousSpeech();
+        }
+    }, 25000 + Math.random() * 20000);
 }
 
 
@@ -920,7 +910,13 @@ function loadNPCAnimations() {
             }, text.length * 100 + 2000); // Duration based on text length
         }
         
-  function npcSpeak(text) {
+        function npcSpeak(text) {
+    // Don't allow speech if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring new speech request");
+        return;
+    }
+    
     npcSpeaking = true;
 
     // Show text in appropriate speech bubble
@@ -964,13 +960,19 @@ function loadNPCAnimations() {
 
 
 function playAudioFile(filename) {
+    // Don't allow audio playback if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring audio file playback");
+        return Promise.reject(new Error("NPC is already speaking"));
+    }
+    
     return new Promise((resolve, reject) => {
         const audio = new Audio(`./audio-cache/${filename}`);
         
         // Set up audio callbacks
         audio.oncanplaythrough = () => {
             // Start lip sync if needed
-            if (npcAvatar && !npcSpeaking) {
+            if (npcAvatar) {
                 lipSyncStartTime = performance.now() / 1000;
                 
                 // Estimate duration for lip sync if not available yet
@@ -1893,119 +1895,29 @@ function createMuteToggle() {
 
 function speakText(text) {
     return new Promise((resolve, reject) => {
-        const apiKey = "sk_ccb7cffcb7b806aa6563e86fcfce64c0614926e615846196"; 
-        const voiceId = "AZnzlk1XvdvUeBnXmlld"; // Enthusiastic female voice
+        console.log("TEST MODE: Using only pre-recorded audio files");
         
-        console.log("Generating ElevenLabs speech for: ", text);
-        
-        // Check if we have this phrase cached
-        const cacheKey = text.trim().toLowerCase();
-        if (devMode && ttsCache[cacheKey]) {
-            console.log("Using cached audio for:", text);
-            
-            // Play the cached audio
-            const audio = new Audio(ttsCache[cacheKey]);
-            
-            // Set up audio callbacks
-            audio.oncanplaythrough = () => {
-                // Record start time for lip sync
-                lipSyncStartTime = performance.now() / 1000;
-                
-                // Generate approximate lip sync data based on cached audio duration
-                generateEnhancedLipSync(text, audio.duration);
-                
-                // Start playback
-                audio.play();
-            };
-            
-            audio.onended = () => {
-                resolve(audio.duration);
-            };
-            
-            audio.onerror = (e) => {
-                console.error("Cached audio playback error:", e);
-                reject(new Error("Audio playback failed"));
-            };
-            
-            return;
+        // Determine which audio file to play based on the content
+        let filename;
+        if (text.toLowerCase().includes("goodbye") || 
+            text.toLowerCase().includes("bye") || 
+            text.toLowerCase().includes("thank")) {
+            filename = "thanks-for-visiting-goodbye-.mp3";
+        } else {
+            // Default to hello for everything else
+            filename = "hello-welcome-to-our-virtual-s.mp3";
         }
         
-        // If in dev mode but not cached, use a preloaded phrase instead
-        if (devMode) {
-            console.log("Dev mode: Using preloaded phrase instead of:", text);
-            const randomPhrase = preloadedPhrases[Math.floor(Math.random() * preloadedPhrases.length)];
-            
-            // If we've already fetched this phrase before, use it
-            if (ttsCache[randomPhrase.toLowerCase()]) {
-                const audio = new Audio(ttsCache[randomPhrase.toLowerCase()]);
-                
-                audio.oncanplaythrough = () => {
-                    lipSyncStartTime = performance.now() / 1000;
-                    generateEnhancedLipSync(text, audio.duration); // Use original text for lip sync
-                    audio.play();
-                };
-                
-                audio.onended = () => {
-                    resolve(audio.duration);
-                };
-                
-                return;
-            }
-            
-            // If no phrases are cached yet, we need to make an API call once
-            console.log("No cached phrases available, making initial API call for:", randomPhrase);
-            text = randomPhrase; // Use the random phrase for the API call
-        }
-        
-        fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'xi-api-key': apiKey
-            },
-            body: JSON.stringify({
-                text: text,
-                model_id: "eleven_monolingual_v1",
-                voice_settings: { stability: 0.5, similarity_boost: 0.5 },
-                return_phonemes: true // Request phoneme data
+        // Use playAudioFile which handles all the lip sync and animation logic
+        console.log(`Playing audio file: ${filename}`);
+        playAudioFile(filename)
+            .then(duration => {
+                resolve(duration);
             })
-        })
-        .then(response => {
-            if (!response.ok) throw new Error("API request failed");
-            return response.blob();
-        })
-        .then(audioBlob => {
-            // Create a URL for the audio blob
-            const audioUrl = URL.createObjectURL(audioBlob);
-            
-            // Cache the audio URL
-            ttsCache[text.trim().toLowerCase()] = audioUrl;
-            
-            // Also save to localStorage for persistence
-            saveCacheToStorage();
-            
-            const audio = new Audio(audioUrl);
-            
-            // Set up audio callbacks
-            audio.oncanplaythrough = () => {
-                lipSyncStartTime = performance.now() / 1000;
-                generateEnhancedLipSync(text, audio.duration);
-                audio.play();
-            };
-            
-            audio.onended = () => {
-                resolve(audio.duration);
-            };
-            
-            audio.onerror = (e) => {
-                console.error("Audio playback error:", e);
-                reject(new Error("Audio playback failed"));
-            };
-        })
-        .catch(error => {
-            console.error('Error generating speech:', error);
-            reject(error);
-        });
+            .catch(err => {
+                console.error("Audio playback error:", err);
+                reject(err);
+            });
     });
 }
 
@@ -2034,10 +1946,33 @@ function loadCacheFromStorage() {
 
 function initTTSCache() {
     loadCacheFromStorage();
+
+    devMode = true;
     
     // Create a dev mode toggle
     createDevModeToggle();
 }
+
+
+function startPeriodicSpeechTest() {
+    // Clear any existing interval
+    if (window.speechTestInterval) {
+        clearInterval(window.speechTestInterval);
+    }
+    
+    // Start a new interval that triggers speech every few seconds
+    window.speechTestInterval = setInterval(() => {
+        // Only speak if not already speaking
+        if (!npcSpeaking && npcAvatar) {
+            console.log("Triggering test speech");
+            npcSpeak("Hello! Welcome to our virtual showroom!");
+        }
+    }, 10000); // Every 10 seconds
+    
+    console.log("Started periodic speech test - will repeat greeting every 10 seconds");
+}
+
+
 
 function createDevModeToggle() {
     // Create a simple button in the corner
@@ -2327,9 +2262,6 @@ function handleVRSessionStart() {
             source.start();
 
             setupPingSound(); // Setup ping sound 
-            
-            // Test that speech works
-            speakText("Audio system initialized");
         });
     }
     
@@ -2347,9 +2279,8 @@ function handleVRSessionStart() {
     camera.position.x = 0;
     camera.position.z = 0;
     
-   
-     // Get reference space for teleportation
-     const session = renderer.xr.getSession();
+    // Get reference space for teleportation
+    const session = renderer.xr.getSession();
     if (session) {
         session.requestReferenceSpace('local-floor').then((refSpace) => {
             xrImmersiveRefSpace = refSpace;
@@ -2358,6 +2289,18 @@ function handleVRSessionStart() {
             console.warn("Could not get local-floor reference space:", err);
         });
     }
+    
+    // Delay the welcome message until VR is fully initialized
+    setTimeout(() => {
+        if (!npcSpeaking) {
+            showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
+                console.error("Failed to play welcome audio:", err);
+                // Fallback to TTS if audio file fails
+                npcSpeak("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            });
+        }
+    }, 3000); // 3 seconds after entering VR
 }
 
 
@@ -2469,16 +2412,6 @@ function createTeleportEffect(x, z) {
 
 
 
-function testTTSCache() {
-    // Force preloading of standard phrases
-    preloadTestPhrases();
-    
-    // Test accessing a cached phrase
-    setTimeout(() => {
-        console.log("Testing cached TTS playback");
-        npcSpeak("Hello! Welcome to our virtual store. I'm your assistant today.");
-    }, 5000);
-}
 
 // Call this after everything is loaded
 document.addEventListener('DOMContentLoaded', () => {
@@ -2486,7 +2419,13 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(testTTSCache, 2000);
 });
 
-
+function testTTSCache() {
+    // Force devMode to true to prevent any API calls
+    devMode = true;
+    
+    // Start the periodic speech test
+    setTimeout(startPeriodicSpeechTest, 5000); // Start after 5 seconds
+}
 
 
 
