@@ -910,7 +910,7 @@ function loadNPCAnimations() {
             }, text.length * 100 + 2000); // Duration based on text length
         }
         
-        function npcSpeak(text) {
+    function npcSpeak(text) {
     // Don't allow speech if already speaking
     if (npcSpeaking) {
         console.log("NPC is already speaking, ignoring new speech request");
@@ -927,7 +927,7 @@ function loadNPCAnimations() {
     }
 
     // Start lip sync animation
-    startLipSync(text);
+    // startLipSync(text);
     
     // Use ElevenLabs TTS
     speakText(text).then(duration => {
@@ -973,11 +973,24 @@ function playAudioFile(filename) {
         audio.oncanplaythrough = () => {
             // Start lip sync if needed
             if (npcAvatar) {
+                // IMPORTANT FIX: Call stopLipSync to clear any previous state
+                stopLipSync();
+                
                 lipSyncStartTime = performance.now() / 1000;
+                lipSyncActive = true;
                 
                 // Estimate duration for lip sync if not available yet
                 const estimatedDuration = audio.duration || 3.0;
-                generateEnhancedLipSync("Hello welcome to our virtual showroom", estimatedDuration);
+                
+                // Choose text based on filename for better lip sync
+                const lipSyncText = filename.includes("hello") ? 
+                    "Hello welcome to our virtual showroom" : 
+                    "Thank you for visiting goodbye";
+                
+                generateEnhancedLipSync(lipSyncText, estimatedDuration);
+                
+                // CRITICAL FIX: Create the interval to update mouth shapes
+                lipSyncInterval = setInterval(updateMouthShape, 16.67);
                 
                 // Set NPC as speaking
                 npcSpeaking = true;
