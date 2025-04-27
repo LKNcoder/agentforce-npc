@@ -130,6 +130,8 @@
         let blinkInterval = null;
         let vrSpeechBubble;
         let npcMoving = false;
+        let productModels = []; // Track spawned models
+        let modelSpawnPoint = new THREE.Vector3(1.5, 0, -2.0); // Default spawn location
 
         let ttsCache = {};  // In-memory cache
     let devMode = true; // Set to true to use cached responses
@@ -647,6 +649,9 @@ function rotatePlayer(turnX) {
         npcAvatar.position.set(-0.3, 0, -2.2); // Position directly on ground
         npcAvatar.scale.set(1, 1, 1);
         npcAvatar.castShadow = true;
+
+        // Apply permanent smile
+         applyPermanentSmile();
         
         // Log model details
         let meshCount = 0;
@@ -782,9 +787,13 @@ function addSpontaneousSpeech() {
 
 // setup the spontaneous speech timer
 function setupSpontaneousSpeech() {
+    // Set a flag to disable spontaneous speech after greeting
+    window.waitingForUserInput = true;
+    
     setInterval(() => {
-        // Only speak if not already speaking, with randomness, and in VR mode
-        if (!npcSpeaking && !npcMoving && Math.random() < 0.7) {
+        // Only speak if not already speaking, with randomness, in VR mode, 
+        // and not waiting for user input
+        if (!npcSpeaking && !npcMoving && Math.random() < 0.7 && !window.waitingForUserInput) {
             // Occasionally do a thinking animation instead
             if (Math.random() < 0.3) {
                 npcThink();
@@ -965,25 +974,62 @@ function playAnimationByCategory(category, fadeTime = 0.5) {
         
         
         function handleUserSpeech(text) {
-            console.log('User said:', text);
-            
-            // Show a loading indicator in the speech bubble
-            showSpeechBubble('...');
-            
-            // Call the AI API to get a response
-            callChatAPI(text)
-                .then(response => {
-                    // Show the AI response in the speech bubble
-                    showSpeechBubble(response);
-                    
-                    // Make the NPC speak
-                    npcSpeak(response);
-                })
-                .catch(error => {
-                    console.error('Error getting AI response:', error);
-                    showSpeechBubble('Sorry, I could not process your request.');
-                });
+    console.log('User said:', text);
+    
+    // Show a loading indicator in the speech bubble
+    showSpeechBubble('...');
+    
+    // Reset waiting flag since user has spoken
+    window.waitingForUserInput = false;
+    
+    // Check for product showcase requests
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('show') || lowerText.includes('see') || lowerText.includes('display')) {
+        // Product showcase request detected
+        if (lowerText.includes('models') || lowerText.includes('models')) {
+            npcSpeak("I'd be happy to show you our models!");
+            setTimeout(() => spawnProductModel('models/models.glb', 'models'), 2000);
+            return;
+        } 
+        else if (lowerText.includes('sandbox') || lowerText.includes('sandbox')) {
+            npcSpeak("Let me show you our selection of sandboxes!");
+            setTimeout(() => spawnProductModel('models/sandbox.glb', 'sandbox'), 2000);
+            return;
         }
+        else if (lowerText.includes('blue') || lowerText.includes('blue')) {
+            npcSpeak("Sure.  Here is the model in blue.");
+            setTimeout(() => spawnProductModel('models/blue.glb', 'blue'), 2000);
+            return;
+        }
+        else if (lowerText.includes('pink') || lowerText.includes('pink')) {
+            npcSpeak("Let me show you our comfortable sofas!");
+            setTimeout(() => spawnProductModel('models/pink.glb', 'pink'), 2000);
+            return;
+        } 
+        else {
+            // Generic product request
+            npcSpeak("Perhaps you'd like to start with a swingset.");
+            setTimeout(() => spawnProductModel('models/swing.glb', 'swing'), 2000);
+            return;
+        }
+    }
+    
+    // For other types of queries, use the AI response system
+    callChatAPI(text)
+        .then(response => {
+            // Show the AI response in the speech bubble
+            showSpeechBubble(response);
+            
+            // Make the NPC speak
+            npcSpeak(response);
+        })
+        .catch(error => {
+            console.error('Error getting AI response:', error);
+            showSpeechBubble('Sorry, I could not process your request.');
+        });
+}
+
+
         
         async function callChatAPI(text) {
             // Simulating an API call with a timeout
@@ -1156,6 +1202,30 @@ function playAudioFile(filename) {
             npcSpeaking = false;
             reject(new Error(`Failed to play audio file: ${filename}`));
         };
+    });
+}
+
+
+function applyPermanentSmile() {
+    if (!npcAvatar) return;
+    
+    npcAvatar.traverse(node => {
+        if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
+            // Check if smile morph targets exist
+            const leftSmileIdx = node.morphTargetDictionary['mouthsmileleft'];
+            const rightSmileIdx = node.morphTargetDictionary['mouthsmileright'];
+            
+            // Apply smile if targets exist
+            if (leftSmileIdx !== undefined) {
+                node.morphTargetInfluences[leftSmileIdx] = 0.3;
+                console.log('Applied left smile morph target');
+            }
+            
+            if (rightSmileIdx !== undefined) {
+                node.morphTargetInfluences[rightSmileIdx] = 0.3;
+                console.log('Applied right smile morph target');
+            }
+        }
     });
 }
 
@@ -1371,7 +1441,19 @@ function setViseme(visemeKey) {
         } else {
             console.warn(`Morph target ${morphName} not found for viseme ${visemeKey}`);
         }
-    });
+
+        // Re-apply smile after setting viseme
+        const leftSmileIdx = node.morphTargetDictionary['mouthsmileleft'];
+        const rightSmileIdx = node.morphTargetDictionary['mouthsmileright'];
+        
+        if (leftSmileIdx !== undefined) {
+            node.morphTargetInfluences[leftSmileIdx] = 0.3;
+        }
+        
+        if (rightSmileIdx !== undefined) {
+            node.morphTargetInfluences[rightSmileIdx] = 0.3;
+        }
+     });
 }
        
 
@@ -1696,6 +1778,8 @@ function blink() {
                         requestAnimationFrame(animateBlink);
                     } else {
                         isBlinking = false;
+                        // Re-apply smile after blinking completes
+                        applyPermanentSmile();
                     }
                 };
                 
@@ -2290,7 +2374,15 @@ function startRecordingContinuous() {
 }
 
 function updateVolumeIndicator() {
-    if (!audioAnalyser || !volumeIndicator || isMuted) return;
+    if (!audioAnalyser || !volumeIndicator) {
+        console.log('Audio analyzer not initialized');
+        return;
+    }
+    
+    if (isMuted) {
+        console.log('Audio muted');
+        return;
+    }
     
     // Get volume data
     audioAnalyser.getByteFrequencyData(analyserData);
@@ -2301,6 +2393,12 @@ function updateVolumeIndicator() {
         sum += analyserData[i];
     }
     const average = sum / analyserData.length;
+    
+    // Log volume periodically (once per second) to avoid console spam
+    if (window.lastVolumeLog === undefined || Date.now() - window.lastVolumeLog > 1000) {
+        console.log(`Microphone volume: ${Math.round(average)}/255`);
+        window.lastVolumeLog = Date.now();
+    }
     
     // Scale for visualization (0 to 0.3)
     const scaledHeight = Math.min(0.29, (average / 255) * 0.3);
@@ -2316,6 +2414,23 @@ function updateVolumeIndicator() {
         volumeIndicator.material.color.set(0xffff00); // Yellow for medium
     } else {
         volumeIndicator.material.color.set(0x00ff00); // Green for soft
+    }
+    
+    // Try to detect speech based on volume levels
+    if (average > 60 && window.waitingForUserInput && !npcSpeaking) {
+        console.log('Speech detected via volume!');
+        // This is just for testing - in production we'd want proper speech recognition
+        window.lastSpeechDetection = Date.now();
+        
+        // If volume stays high for a bit, trigger speech recognition
+        if (!window.speechDetectionTimeout) {
+            window.speechDetectionTimeout = setTimeout(() => {
+                if (window.waitingForUserInput && !npcSpeaking) {
+                    handleUserVolumeDetected();
+                }
+                window.speechDetectionTimeout = null;
+            }, 1000); // Wait 1 second of consistent volume
+        }
     }
 }
 
@@ -2437,6 +2552,11 @@ function updateVolumeIndicator() {
         if (npcAvatar && eyeMovementActive && !npcSpeaking) {
             updateEyePosition();
         }
+
+         // Ensure smile persists
+         if (npcAvatar && !(npcSpeaking || isBlinking) && frameCount % 100 === 0) {
+            applyPermanentSmile();
+        }
         
         // Render the scene
         renderer.render(scene, camera);
@@ -2490,18 +2610,32 @@ function handleVRSessionStart() {
     }
     
      // Delay the welcome message until VR is fully initialized
-     setTimeout(() => {
+      // Delay the welcome message until VR is fully initialized
+    setTimeout(() => {
         if (!npcSpeaking) {
+            window.waitingForUserInput = true; // Set flag to wait for user input
             showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
             
             // Play welcome animation
             playWelcomeAnimation();
             
-            playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
-                console.error("Failed to play welcome audio:", err);
-                // Fallback to TTS if audio file fails
-                npcSpeak("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
-            });
+            playAudioFile("hello-welcome-to-our-virtual-s.mp3")
+                .then(() => {
+                    // After welcome completes, prompt user to ask questions
+                    setTimeout(() => {
+                        npcSpeak("Feel free to ask me about our products. What would you like to see?");
+                    }, 1000);
+                })
+                .catch(err => {
+                    console.error("Failed to play welcome audio:", err);
+                    // Fallback to TTS if audio file fails
+                    npcSpeak("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+                    
+                    // After welcome completes, prompt user to ask questions
+                    setTimeout(() => {
+                        npcSpeak("Feel free to ask me about our products. What would you like to see?");
+                    }, 5000);
+                });
         }
     }, 3000); // 3 seconds after entering VR
 }
@@ -2630,6 +2764,117 @@ function testTTSCache() {
     setTimeout(startPeriodicSpeechTest, 5000); // Start after 5 seconds
 }
 
+
+
+
+// Function to spawn a 3D model
+function spawnProductModel(modelPath, name) {
+    console.log(`Spawning product model: ${name} from ${modelPath}`);
+    
+    // Show loading indicator
+    showSpeechBubble(`Loading ${name}...`);
+    
+    // Load the model
+    gltfLoader.load(
+        modelPath,
+        function(gltf) {
+            console.log(`Successfully loaded model: ${name}`);
+            
+            const model = gltf.scene;
+            
+            // Add it to the scene at the spawn point
+            model.position.copy(modelSpawnPoint);
+            model.scale.set(0.5, 0.5, 0.5); // Scale appropriately
+            model.userData.productName = name;
+            
+            // Create a pedestal for the product
+            const pedestalGeometry = new THREE.CylinderGeometry(0.5, 0.5, 0.05, 32);
+            const pedestalMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x444444, 
+                metalness: 0.8,
+                roughness: 0.2 
+            });
+            const pedestal = new THREE.Mesh(pedestalGeometry, pedestalMaterial);
+            pedestal.position.set(modelSpawnPoint.x, 0.025, modelSpawnPoint.z);
+            
+            // Create spotlight for the product
+            const spotlight = new THREE.SpotLight(0xffffff, 1.5);
+            spotlight.position.set(modelSpawnPoint.x, 2.5, modelSpawnPoint.z);
+            spotlight.angle = 0.3;
+            spotlight.penumbra = 0.2;
+            spotlight.castShadow = true;
+            spotlight.target = model;
+            
+            // Add to scene
+            scene.add(model);
+            scene.add(pedestal);
+            scene.add(spotlight);
+            
+            // Store reference to clean up later
+            productModels.push({
+                model: model,
+                pedestal: pedestal,
+                spotlight: spotlight,
+                name: name
+            });
+            
+            // Update spawn point for next model (circular arrangement)
+            updateModelSpawnPoint();
+            
+            // Animation to introduce the model
+            animateModelIntroduction(model);
+            
+            // NPC looks at and introduces the model
+            introduceProduct(name);
+            
+        },
+        function(xhr) {
+            console.log(`Loading ${name}: ${(xhr.loaded / xhr.total * 100).toFixed(0)}%`);
+        },
+        function(error) {
+            console.error(`Error loading model ${name}:`, error);
+            showSpeechBubble(`Sorry, I couldn't load the ${name} model.`);
+            npcSpeak(`I apologize, but there was an error loading the ${name} model.`);
+        }
+    );
+}
+
+// Update spawn location in a circular pattern
+function updateModelSpawnPoint() {
+    // Create a circular arrangement of products around the user
+    const radius = 2.0;
+    const angle = (productModels.length + 1) * (Math.PI / 4); // 45-degree spacing
+    
+    modelSpawnPoint.x = Math.cos(angle) * radius;
+    modelSpawnPoint.z = Math.sin(angle) * radius - 1.0; // Offset forward
+    
+    console.log(`Next model spawn point: (${modelSpawnPoint.x.toFixed(2)}, ${modelSpawnPoint.z.toFixed(2)})`);
+}
+
+// Animate the model introduction with a scale-up effect
+function animateModelIntroduction(model) {
+    // Start with a tiny scale
+    model.scale.set(0.01, 0.01, 0.01);
+    
+    // Create animation
+    const startTime = performance.now();
+    const duration = 1000; // 1 second animation
+    
+    function animateScale() {
+        const elapsed = performance.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        
+        // Ease-out function for smooth scaling
+        const scale = 0.5 * (1 - Math.cos(progress * Math.PI));
+        model.scale.set(scale, scale, scale);
+        
+        if (progress < 1) {
+            requestAnimationFrame(animateScale);
+        }
+    }
+    
+    requestAnimationFrame(animateScale);
+}
 
 
 
