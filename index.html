@@ -216,7 +216,6 @@ const visemeMapping = {
           scene.add(cameraRig);
 
           initTTSCache(); 
-          addDiagnosticPanel();
 
           window.addEventListener('DOMContentLoaded', () => {
     
@@ -551,7 +550,7 @@ function rotatePlayer(turnX) {
     })
     .then(() => {
         // If box.glb exists, check the npc avatar file
-        return fetch('npc-avatar.glb');
+        return fetch('npc-avatar-new.glb');
     })
     .then(response => {
         if (!response.ok) {
@@ -603,7 +602,7 @@ function rotatePlayer(turnX) {
     function loadNPCAvatar() {
         console.log('Attempting to load NPC avatar GLB...');
         gltfLoader.load(
-            'npc-avatar.glb',
+            'npc-avatar-new.glb',
             onModelLoaded,
             function(xhr) {
                 console.log('NPC model load progress:', (xhr.loaded / xhr.total * 100) + '%');
@@ -781,10 +780,10 @@ function loadNPCAnimations() {
         return;
     }
     
-     // Load external animations from animations.glb
+     // Load external animations from animations3.glb
      console.log('Attempting to load animations from animations.gltf');
     gltfLoader.load(
-        'animations.glb',
+        'animations3.glb',
         function(gltf) {
             console.log(`Loaded ${gltf.animations.length} external animations`);
             
@@ -911,16 +910,13 @@ function loadNPCAnimations() {
             }, text.length * 100 + 2000); // Duration based on text length
         }
         
-        function npcSpeak(text) {
-    console.log("npcSpeak called with:", text);
-    
+    function npcSpeak(text) {
     // Don't allow speech if already speaking
     if (npcSpeaking) {
         console.log("NPC is already speaking, ignoring new speech request");
         return;
     }
     
-    // Set flag BEFORE showing speech bubble
     npcSpeaking = true;
 
     // Show text in appropriate speech bubble
@@ -929,25 +925,37 @@ function loadNPCAnimations() {
     } else {
         showSpeechBubble(text);
     }
+
+    // Start lip sync animation
+    // startLipSync(text);
     
     // Use ElevenLabs TTS
     speakText(text).then(duration => {
         console.log(`Speech completed, duration: ${duration}s`);
         
-        // The reset is handled in playAudioFile's onended callback
-        // so we don't need a setTimeout here to reset npcSpeaking
-        
+        // Small delay before stopping lip sync
+        setTimeout(() => {
+            npcSpeaking = false;
+            stopLipSync();
+            
+            // Return to idle animation
+            if (npcAnimations['talking'] && npcAnimations['idle']) {
+                npcAnimations['talking'].fadeOut(0.5);
+                npcAnimations['idle'].reset().fadeIn(0.5).play();
+            }
+        }, 300); // Small delay to prevent abrupt animation stop
     }).catch(error => {
         console.error("Speech failed:", error);
-        npcSpeaking = false; // Make sure to reset on error
+        npcSpeaking = false;
         stopLipSync();
-        
-        // Return to idle animation on error
-        if (npcAnimations['talking'] && npcAnimations['idle']) {
-            npcAnimations['talking'].fadeOut(0.5);
-            npcAnimations['idle'].reset().fadeIn(0.5).play();
-        }
     });
+    
+    // If we have a talking animation, use it
+    if (npcAnimations['talking']) {
+        // Crossfade from idle to talking
+        npcAnimations['idle'].fadeOut(0.5);
+        npcAnimations['talking'].reset().fadeIn(0.5).play();
+    }
 }
 
 
@@ -959,87 +967,64 @@ function playAudioFile(filename) {
     }
     
     return new Promise((resolve, reject) => {
-        // IMPORTANT: Set npcSpeaking at the beginning
-        npcSpeaking = true;
-        
-        console.log("Loading audio file:", filename);
         const audio = new Audio(`./audio-cache/${filename}`);
         
-        // Check if the file exists with a fetch first
-        fetch(`./audio-cache/${filename}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`Audio file not found: ${filename}`);
+        // Set up audio callbacks
+        audio.oncanplaythrough = () => {
+            // Start lip sync if needed
+            if (npcAvatar) {
+                // IMPORTANT FIX: Call stopLipSync to clear any previous state
+                stopLipSync();
+                
+                lipSyncStartTime = performance.now() / 1000;
+                lipSyncActive = true;
+                
+                // Estimate duration for lip sync if not available yet
+                const estimatedDuration = audio.duration || 3.0;
+                
+                // Choose text based on filename for better lip sync
+                const lipSyncText = filename.includes("hello") ? 
+                    "Hello welcome to our virtual showroom" : 
+                    "Thank you for visiting goodbye";
+                
+                generateEnhancedLipSync(lipSyncText, estimatedDuration);
+                
+                // CRITICAL FIX: Create the interval to update mouth shapes
+                lipSyncInterval = setInterval(updateMouthShape, 16.67);
+                
+                // Set NPC as speaking
+                npcSpeaking = true;
+                
+                // Use talking animation if available
+                if (npcAnimations['talking'] && npcAnimations['idle']) {
+                    npcAnimations['idle'].fadeOut(0.5);
+                    npcAnimations['talking'].reset().fadeIn(0.5).play();
                 }
-                
-                // Set up audio callbacks
-                audio.oncanplaythrough = () => {
-                    // Start lip sync if needed
-                    if (npcAvatar) {
-                        // IMPORTANT: Call stopLipSync to clear any previous state
-                        stopLipSync();
-                        
-                        lipSyncStartTime = performance.now() / 1000;
-                        lipSyncActive = true;
-                        
-                        // Estimate duration for lip sync
-                        const estimatedDuration = audio.duration || 3.0;
-                        
-                        // Choose text based on filename for better lip sync
-                        const lipSyncText = filename.includes("hello") ? 
-                            "Hello welcome to our virtual showroom" : 
-                            "Thank you for visiting goodbye";
-                        
-                        generateEnhancedLipSync(lipSyncText, estimatedDuration);
-                        
-                        // CRITICAL: Create the interval to update mouth shapes
-                        lipSyncInterval = setInterval(updateMouthShape, 16.67);
-                        
-                        // Use talking animation if available
-                        if (npcAnimations['talking'] && npcAnimations['idle']) {
-                            npcAnimations['idle'].fadeOut(0.5);
-                            npcAnimations['talking'].reset().fadeIn(0.5).play();
-                        }
-                    }
-                    
-                    // Start playback
-                    audio.play().catch(err => {
-                        console.error("Audio play() failed:", err);
-                        reject(err);
-                    });
-                };
-                
-                // Better error handling
-                audio.onerror = (e) => {
-                    console.error("Audio file playback error:", e);
-                    npcSpeaking = false; // Reset speaking state on error
-                    stopLipSync();
-                    reject(new Error(`Failed to play audio file: ${filename}`));
-                };
-                
-                audio.onended = () => {
-                    console.log("Audio playback completed");
-                    
-                    // Reset NPC state with slight delay
-                    setTimeout(() => {
-                        npcSpeaking = false; // IMPORTANT: Reset the speaking flag
-                        stopLipSync();
-                        
-                        // Return to idle animation
-                        if (npcAnimations['talking'] && npcAnimations['idle']) {
-                            npcAnimations['talking'].fadeOut(0.5);
-                            npcAnimations['idle'].reset().fadeIn(0.5).play();
-                        }
-                    }, 300);
-                    
-                    resolve(audio.duration);
-                };
-            })
-            .catch(err => {
-                console.error("Audio file fetch error:", err);
-                npcSpeaking = false; // Reset speaking state on error
-                reject(err);
-            });
+            }
+            
+            // Start playback
+            audio.play();
+        };
+        
+        audio.onended = () => {
+            // Reset NPC state
+            npcSpeaking = false;
+            stopLipSync();
+            
+            // Return to idle animation
+            if (npcAnimations['talking'] && npcAnimations['idle']) {
+                npcAnimations['talking'].fadeOut(0.5);
+                npcAnimations['idle'].reset().fadeIn(0.5).play();
+            }
+            
+            resolve(audio.duration);
+        };
+        
+        audio.onerror = (e) => {
+            console.error("Audio file playback error:", e);
+            npcSpeaking = false;
+            reject(new Error(`Failed to play audio file: ${filename}`));
+        };
     });
 }
 
@@ -1915,37 +1900,7 @@ function createMuteToggle() {
     return mesh;
 }   
 
-// diagnostic panel to show NPC state and lip sync info
-function addDiagnosticPanel() {
-    const panel = document.createElement('div');
-    panel.style.position = 'fixed';
-    panel.style.bottom = '40px';
-    panel.style.left = '10px';
-    panel.style.background = 'rgba(0,0,0,0.7)';
-    panel.style.color = 'white';
-    panel.style.padding = '10px';
-    panel.style.fontFamily = 'monospace';
-    panel.style.zIndex = '1000';
-    panel.id = 'diagnostic-panel';
-    
-    document.body.appendChild(panel);
-    
-    // Update every 500ms
-    setInterval(() => {
-        if (npcAvatar) {
-            const html = `
-                <b>NPC State:</b><br>
-                npcSpeaking: ${npcSpeaking}<br>
-                lipSyncActive: ${lipSyncActive}<br>
-                lipSyncInterval: ${lipSyncInterval !== null}<br>
-                currentViseme: ${currentViseme}<br>
-                Animation: ${npcAnimations['talking'] ? (npcAnimations['talking'].isRunning() ? 'talking' : 'idle') : 'none'}<br>
-                VR Mode: ${renderer.xr.isPresenting}<br>
-            `;
-            panel.innerHTML = html;
-        }
-    }, 500);
-}
+
 
 
 
@@ -2312,13 +2267,14 @@ function handleVRSessionStart() {
     if (audioContext && audioContext.state === 'suspended') {
         audioContext.resume().then(() => {
             console.log('AudioContext resumed successfully');
+            // Play a silent sound to unlock audio
             const silentSound = audioContext.createBuffer(1, 1, 22050);
             const source = audioContext.createBufferSource();
             source.buffer = silentSound;
             source.connect(audioContext.destination);
             source.start();
 
-            console.log('Silent sound played to unlock audio context');
+            setupPingSound(); // Setup ping sound 
         });
     }
     
@@ -2350,8 +2306,12 @@ function handleVRSessionStart() {
     // Delay the welcome message until VR is fully initialized
     setTimeout(() => {
         if (!npcSpeaking) {
-            // IMPORTANT: Use npcSpeak instead of direct calls for consistency
-            npcSpeak("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
+                console.error("Failed to play welcome audio:", err);
+                // Fallback to TTS if audio file fails
+                npcSpeak("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            });
         }
     }, 3000); // 3 seconds after entering VR
 }
