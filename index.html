@@ -967,7 +967,7 @@
 
 function createExitButton() {
     // Create a red exit button
-    const geometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 32);
+    const geometry = new THREE.CylinderGeometry(0.5, 0.5, 0.02, 32);
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xFF0000,  // Bright red
         emissive: 0x770000, // Red glow
@@ -978,8 +978,8 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 0.8, -1.0);
-    exitButton.rotation.x = Math.PI / 2; // Make it face upward
+    exitButton.position.set(0, 0.8, -0.2);
+    exitButton.rotation.x = Math.PI / 3; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
     
@@ -1254,9 +1254,11 @@ function checkExitButtonIntersection() {
                 console.warn('No ground mesh found in world.glb, creating invisible ground plane');
                 const groundGeometry = new THREE.PlaneGeometry(100, 100);
                 const groundMaterial = new THREE.MeshStandardMaterial({ 
-                    color: 0x7CFC00,
+                    color: 0x000000,
                     transparent: true,
-                    opacity: 0.0
+                    opacity: 0.0,
+                    visible: false 
+
                 });
                 ground = new THREE.Mesh(groundGeometry, groundMaterial);
                 ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
@@ -1515,8 +1517,7 @@ function createModelLabel(modelObject, name) {
                 
                 const modelObject = gltf.scene;
                 
-                // Don't modify position - use the baked-in position
-                // modelObject is already positioned correctly from the file
+                modelObject.rotation.x = -Math.PI/2;
                 
                 // Make sure all objects cast and receive shadows
                 modelObject.traverse((child) => {
