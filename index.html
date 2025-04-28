@@ -1381,6 +1381,51 @@
 
 
 
+// Helper function to create text labels for playgound models
+function createModelLabel(modelObject, name) {
+    // Create canvas for label
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    canvas.width = 512;
+    canvas.height = 128;
+    
+    // Draw background
+    context.fillStyle = 'rgba(255, 255, 255, 0.8)';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Add border
+    context.strokeStyle = '#4CAF50';
+    context.lineWidth = 8;
+    context.strokeRect(4, 4, canvas.width-8, canvas.height-8);
+    
+    // Draw text
+    context.font = 'bold 48px Arial';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillStyle = '#2E7D32';
+    context.fillText(name, canvas.width / 2, canvas.height / 2);
+    
+    // Create texture
+    const labelTexture = new THREE.CanvasTexture(canvas);
+    const labelMaterial = new THREE.MeshBasicMaterial({
+        map: labelTexture,
+        transparent: true,
+        side: THREE.DoubleSide
+    });
+    
+    // Create label plane
+    const labelGeometry = new THREE.PlaneGeometry(1.5, 0.4);
+    const label = new THREE.Mesh(labelGeometry, labelMaterial);
+    
+    // Position above model (estimate model height)
+    label.position.y = 2.0;
+    
+    // Add to model object
+    modelObject.add(label);
+    
+    // Make label always face the camera
+    modelObject.userData.isLabel = true;
+}
 
 
     function loadPlaygroundModels() {
@@ -3202,6 +3247,12 @@ function sayGoodbye() {
                 if (isTeleporting) {
                     updateTeleportTarget();
                 }
+
+                scene.traverse((object) => {
+                 if (object.userData && object.userData.isLabel) {
+               object.lookAt(camera.position);
+                }
+                });
 
                 // Update eye position to look at camera
                 if (npcAvatar && eyeMovementActive && !isBlinking) {
