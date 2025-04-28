@@ -2412,6 +2412,97 @@
             }
         }
 
+
+        function playAudioFile(filename) {
+    // Don't allow audio playback if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring audio file playback");
+        return Promise.reject(new Error("NPC is already speaking"));
+    }
+    
+    return new Promise((resolve, reject) => {
+        console.log(`Playing audio file: ${filename}`);
+        const audio = new Audio(`./audio-cache/${filename}`);
+        
+        // Set up audio callbacks
+        audio.oncanplaythrough = () => {
+            // Start lip sync if needed
+            npcSpeaking = true;
+            
+            // Determine which text to use for lip sync
+            let lipSyncText;
+            if (filename.includes("hello")) {
+                lipSyncText = "Hello. Welcome to our virtual showroom. I'm Sunny. I'm here to help.";
+                // Show text in appropriate speech bubble
+                if (renderer && renderer.xr.isPresenting) {
+                    updateVRSpeechBubble(lipSyncText);
+                } else {
+                    showSpeechBubble(lipSyncText);
+                }
+            } else if (filename.includes("thanks")) {
+                lipSyncText = "Thanks for visiting. Goodbye.";
+                // Show text in appropriate speech bubble
+                if (renderer && renderer.xr.isPresenting) {
+                    updateVRSpeechBubble(lipSyncText);
+                } else {
+                    showSpeechBubble(lipSyncText);
+                }
+            }
+            
+            // Generate and start lip sync
+            startLipSync(lipSyncText);
+            
+            // Select animation based on audio content
+            let animationCategory = 'talking';
+            if (filename.includes("hello")) {
+                animationCategory = 'greeting';
+            }
+            
+            // Play the appropriate animation
+            playAnimationByCategory(animationCategory);
+            
+            // Play audio through positional audio for 3D effect if available
+            if (positionalAudio && audioListener) {
+                // Create a buffer from the Audio element
+                const audioContext = audioListener.context;
+                const source = audioContext.createMediaElementSource(audio);
+                positionalAudio.setMediaElementSource(audio);
+                audio.play();
+            } else {
+                // Fallback to regular audio playback
+                audio.play();
+            }
+        };
+        
+        audio.onended = () => {
+            // Reset NPC state
+            npcSpeaking = false;
+            stopLipSync();
+            
+            if (renderer && renderer.xr.isPresenting) {
+                vrSpeechBubble.visible = false;
+            } else {
+                speechBubble.style.display = 'none';
+            }
+            
+            // Return to idle animation if not moving
+            if (!npcMoving) {
+                playAnimationByCategory('idle');
+            }
+            
+            resolve(audio.duration);
+        };
+        
+        audio.onerror = (e) => {
+            console.error("Audio file playback error:", e);
+            npcSpeaking = false;
+            reject(new Error(`Failed to play audio file: ${filename}`));
+        };
+    });
+}
+
+
+
         // Set up audio capture for voice recognition
         function setupAudioCapture() {
             // Initialize Web Audio API context
@@ -2800,49 +2891,82 @@
 
         // Handle VR session start
         function handleVRSessionStart() {
-            console.log('VR session started');
+    console.log('VR session started');
 
-            // Initialize audio context immediately after user interaction
-            if (audioContext && audioContext.state === 'suspended') {
-                audioContext.resume().then(() => {
-                    console.log('AudioContext resumed successfully');
-                });
-            }
+    // Initialize audio context immediately after user interaction
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().then(() => {
+            console.log('AudioContext resumed successfully');
+        });
+    }
+    
+    // Force NPC animations to play
+    if (npcAvatar && npcMixer && npcAnimations['idle']) {
+        npcAnimations['idle'].reset().setEffectiveWeight(1.0).play();
+        npcMixer.update(0);
+    }
+    
+    // Reset camera rig position when entering VR
+    cameraRig.position.set(0, 0, 0);
+    
+    // Make sure camera is at the right height in the rig
+    camera.position.y = userHeight;
+    camera.position.x = 0;
+    camera.position.z = 0;
+    
+    // Delay the welcome message until VR is fully initialized
+    setTimeout(() => {
+        if (!npcSpeaking) {
+            window.waitingForUserInput = true; // Set flag to wait for user input
             
-            // Force NPC animations to play
-            if (npcAvatar && npcMixer && npcAnimations['idle']) {
-                npcAnimations['idle'].reset().setEffectiveWeight(1.0).play();
-                npcMixer.update(0);
-            }
-            
-            // Reset camera rig position when entering VR
-            cameraRig.position.set(0, 0, 0);
-            
-            // Make sure camera is at the right height in the rig
-            camera.position.y = userHeight;
-            camera.position.x = 0;
-            camera.position.z = 0;
-            
-            // Delay the welcome message until VR is fully initialized
-            setTimeout(() => {
-                if (!npcSpeaking) {
-                    window.waitingForUserInput = true; // Set flag to wait for user input
-                    
-                    // Play welcome animation
-                    playWelcomeAnimation();
-                    
-                    // Say welcome message
-                    npcSpeak("Hello! Welcome to our playground equipment showroom! I'm your virtual sales representative. Feel free to ask me any questions about our products!");
-                    
+            // Play welcome audio file
+            playAudioFile("hello-welcome-to-our-virtual-s.mp3")
+                .then(() => {
+                    console.log("Welcome audio played successfully");
                     // After welcome completes, prompt user to ask questions
                     setTimeout(() => {
                         if (!npcSpeaking) {
                             npcSpeak("Would you like me to show you some of our playground models?");
                         }
-                    }, 8000);
-                }
-            }, 2000); // 2 seconds after entering VR
+                    }, 1000);
+                })
+                .catch(err => {
+                    console.error("Failed to play welcome audio:", err);
+                    // Fallback to TTS if audio file fails
+                    npcSpeak("Hello. Welcome to our virtual showroom. I'm Sunny. I'm here to help.");
+                });
         }
+    }, 2000); // 2 seconds after entering VR
+}
+
+
+
+function sayGoodbye() {
+    // Play goodbye message
+    playAudioFile("thanks-for-visiting-goodbye-.mp3")
+        .then(() => {
+            console.log("Goodbye message completed");
+            // Exit VR session after a short delay
+            setTimeout(() => {
+                if (renderer && renderer.xr.isPresenting) {
+                    renderer.xr.getSession().end();
+                }
+            }, 500);
+        })
+        .catch(err => {
+            console.error("Failed to play goodbye audio:", err);
+            // Fallback to TTS
+            npcSpeak("Thanks for visiting. Goodbye.");
+            
+            // Exit VR session after a short delay
+            setTimeout(() => {
+                if (renderer && renderer.xr.isPresenting) {
+                    renderer.xr.getSession().end();
+                }
+            }, 2000);
+        });
+}
+
 
         // Handle VR session end
         function handleVRSessionEnd() {
