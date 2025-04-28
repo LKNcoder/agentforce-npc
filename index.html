@@ -963,6 +963,10 @@
 
         // Exit VR button functionality
         document.addEventListener('DOMContentLoaded', function() {
+            // Create scene first
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(black);
+    scene.fog = new THREE.Fog(0x87CEEB, 0.1, 1000); // Add fog to the scene
 
             // Load NPC model in the background as soon as page loads
     loadingManager = new THREE.LoadingManager();
@@ -1978,50 +1982,32 @@
         }
 
         function blink() {
-            isBlinking = true;
+    isBlinking = true;
+    console.log("Blink triggered");
+    
+    // Apply blink morph targets
+    npcAvatar.traverse(node => {
+        if (node.isMesh && node.morphTargetDictionary) {
+            const leftBlinkIdx = node.morphTargetDictionary[eyeBlinkMorphTargets.left];
+            const rightBlinkIdx = node.morphTargetDictionary[eyeBlinkMorphTargets.right];
             
-            // Apply blink morph targets
-            npcAvatar.traverse(node => {
-                if (node.isMesh && node.morphTargetDictionary) {
-                    const leftBlinkIdx = node.morphTargetDictionary[eyeBlinkMorphTargets.left];
-                    const rightBlinkIdx = node.morphTargetDictionary[eyeBlinkMorphTargets.right];
-                    
-                    if (leftBlinkIdx !== undefined && rightBlinkIdx !== undefined) {
-                        // Animate blink over 150ms
-                        const startTime = performance.now();
-                        const blinkDuration = 150;
-                        
-                        const animateBlink = () => {
-                            const elapsed = performance.now() - startTime;
-                            const t = Math.min(elapsed / blinkDuration, 1);
-                            
-                            // Close eyes
-                            if (t < 0.5) {
-                                const openAmount = 1 - (t * 2);
-                                if (leftBlinkIdx !== undefined) node.morphTargetInfluences[leftBlinkIdx] = 1 - openAmount;
-                                if (rightBlinkIdx !== undefined) node.morphTargetInfluences[rightBlinkIdx] = 1 - openAmount;
-                            } 
-                            // Open eyes
-                            else {
-                                const openAmount = (t - 0.5) * 2;
-                                if (leftBlinkIdx !== undefined) node.morphTargetInfluences[leftBlinkIdx] = 1 - openAmount;
-                                if (rightBlinkIdx !== undefined) node.morphTargetInfluences[rightBlinkIdx] = 1 - openAmount;
-                            }
-                            
-                            if (t < 1) {
-                                requestAnimationFrame(animateBlink);
-                            } else {
-                                isBlinking = false;
-                                // Re-apply smile after blinking completes
-                                applyPermanentSmile();
-                            }
-                        };
-                        
-                        requestAnimationFrame(animateBlink);
-                    }
-                }
-            });
+            if (leftBlinkIdx !== undefined && rightBlinkIdx !== undefined) {
+                // Close eyes immediately
+                node.morphTargetInfluences[leftBlinkIdx] = 1.0;
+                node.morphTargetInfluences[rightBlinkIdx] = 1.0;
+                
+                // Open eyes after a short delay
+                setTimeout(() => {
+                    node.morphTargetInfluences[leftBlinkIdx] = 0.0;
+                    node.morphTargetInfluences[rightBlinkIdx] = 0.0;
+                    isBlinking = false;
+                    applyPermanentSmile();
+                    console.log("Blink completed");
+                }, 150);
+            }
         }
+    });
+}
 
         // Apply permanent smile
         function applyPermanentSmile() {
@@ -2917,61 +2903,73 @@
         }
 
         // Update NPC movement to follow user
-    function updateNPCMovement() {
+        function updateNPCMovement() {
+    // Skip if NPC or camera rig isn't available
     if (!npcAvatar || !cameraRig) return;
     
-        // If NPC should follow the user
-        if (npcFollowingUser) {
-        // Get direction to user camera/rig
+    // Only proceed if NPC should follow user
+    if (npcFollowingUser) {
+        // Get player position
         const userPosition = new THREE.Vector3();
         cameraRig.getWorldPosition(userPosition);
         
-        // Create a direction vector towards the user
+        // Get direction vector to player
         const direction = new THREE.Vector3();
         direction.subVectors(userPosition, npcAvatar.position);
-        direction.y = 0; // Keep on ground plane
+        direction.y = 0; // Keep on ground plane (no flying!)
         
-        // Calculate distance to user
+        // Calculate current distance to player
         const distance = direction.length();
         
-        // Define optimal following distance and buffer zones
-        const optimalDistance = 2.0;
-        const startFollowDistance = optimalDistance + 0.5; // Start following at 2.5m
-        const stopFollowDistance = optimalDistance - 0.3; // Stop at 1.7m
+        // Define optimal distance parameters
+        const optimalDistance = 2.0; // Target distance to maintain
+        const followThreshold = 0.7;  // How much deviation from optimal before moving
         
-        // If far enough away, move towards user
-        if (distance > startFollowDistance) {
+        // NPC will only move if player is too far away
+        const tooFar = distance > (optimalDistance + followThreshold);
+        // NPC will stop when it gets close enough
+        const closeEnough = distance < (optimalDistance + 0.2);
+        
+        // Debug distance
+        console.log(`Distance to player: ${distance.toFixed(2)}m, Moving: ${npcMoving}, TooFar: ${tooFar}, CloseEnough: ${closeEnough}`);
+        
+        // Start moving if player is too far
+        if (tooFar) {
+            // Normalize direction vector
             direction.normalize();
             
-            // Calculate movement speed
-            const baseSpeed = 0.02;
-            const speedFactor = Math.min(1.5, distance / optimalDistance);
+            // Calculate speed based on distance (faster when farther)
+            const baseSpeed = 0.015; // Slightly slower base speed
+            const speedFactor = Math.min(1.3, (distance - optimalDistance) / 2);
             const moveSpeed = baseSpeed * speedFactor;
             
-            // Rotate NPC to face user
+            // Rotate NPC to face player
             const targetRotation = Math.atan2(direction.x, direction.z);
-            npcAvatar.rotation.y = THREE.MathUtils.lerp(npcAvatar.rotation.y, targetRotation, 0.1);
+            npcAvatar.rotation.y = THREE.MathUtils.lerp(
+                npcAvatar.rotation.y, 
+                targetRotation, 
+                0.1
+            );
             
-            // IMPROVED: Move directly toward player instead of using local forward vector
+            // Move directly toward player
             npcAvatar.position.x += direction.x * moveSpeed;
             npcAvatar.position.z += direction.z * moveSpeed;
             
-            // Animation handling
-            if (!npcMoving) {
+            // Start walking animation if not already moving
+            if (!npcMoving && !npcSpeaking) {
+                console.log("Starting walk animation");
                 const walkAction = playAnimationByCategory('walk');
-                if (walkAction) {
-                    // Make sure walk animation doesn't include root motion
-                    walkAction.timeScale = speedFactor;
-                    // Optional: disable root motion if your animation system supports it
-                    // walkAction.setEffectiveWeight(1.0);
-                }
+                if (walkAction) walkAction.timeScale = speedFactor;
                 npcMoving = true;
             }
         }
-        // If close enough, return to idle
-        else if (distance <= stopFollowDistance && npcMoving) {
-            playAnimationByCategory('idle');
+        // Stop and return to idle when close enough
+        else if (closeEnough && npcMoving) {
+            console.log("Stopping - reached optimal distance");
             npcMoving = false;
+            if (!npcSpeaking) {
+                playAnimationByCategory('idle');
+            }
         }
     }
 }
