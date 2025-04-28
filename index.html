@@ -2904,14 +2904,11 @@
         }
 
         // Update NPC movement to follow user
-        function updateNPCMovement() {
+    function updateNPCMovement() {
     if (!npcAvatar || !cameraRig) return;
     
-    // Add this check to ensure the feature is enabled
-    let npcFollowingEnabled = true; // You can make this a proper global variable if needed
-    
-    // If NPC should follow the user
-    if (npcFollowingUser && npcFollowingEnabled) {
+        // If NPC should follow the user
+        if (npcFollowingUser) {
         // Get direction to user camera/rig
         const userPosition = new THREE.Vector3();
         cameraRig.getWorldPosition(userPosition);
@@ -2927,39 +2924,38 @@
         // Define optimal following distance and buffer zones
         const optimalDistance = 2.0;
         const startFollowDistance = optimalDistance + 0.5; // Start following at 2.5m
-        const stopFollowDistance = optimalDistance - 0.3; // Stop at 1.7m (prevent oscillation)
+        const stopFollowDistance = optimalDistance - 0.3; // Stop at 1.7m
         
         // If far enough away, move towards user
         if (distance > startFollowDistance) {
             direction.normalize();
             
-            // Calculate a smooth movement speed based on distance
+            // Calculate movement speed
             const baseSpeed = 0.02;
             const speedFactor = Math.min(1.5, distance / optimalDistance);
             const moveSpeed = baseSpeed * speedFactor;
             
-            // Rotate NPC to face user (smooth rotation)
+            // Rotate NPC to face user
             const targetRotation = Math.atan2(direction.x, direction.z);
+            npcAvatar.rotation.y = THREE.MathUtils.lerp(npcAvatar.rotation.y, targetRotation, 0.1);
             
-            // Apply smooth rotation (lerp between current and target rotation)
-            const currentY = npcAvatar.rotation.y;
-            const targetY = targetRotation;
-            npcAvatar.rotation.y = THREE.MathUtils.lerp(currentY, targetY, 0.1);
+            // IMPROVED: Move directly toward player instead of using local forward vector
+            npcAvatar.position.x += direction.x * moveSpeed;
+            npcAvatar.position.z += direction.z * moveSpeed;
             
-            // Only move forward based on NPC's current facing direction
-            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(npcAvatar.quaternion);
-            npcAvatar.position.add(forward.multiplyScalar(moveSpeed));
-            
-            // If not already walking, start the walk animation with appropriate speed
+            // Animation handling
             if (!npcMoving) {
                 const walkAction = playAnimationByCategory('walk');
                 if (walkAction) {
-                    walkAction.timeScale = speedFactor; // Match animation speed to movement
+                    // Make sure walk animation doesn't include root motion
+                    walkAction.timeScale = speedFactor;
+                    // Optional: disable root motion if your animation system supports it
+                    // walkAction.setEffectiveWeight(1.0);
                 }
                 npcMoving = true;
             }
         }
-        // If close enough and currently walking, return to idle
+        // If close enough, return to idle
         else if (distance <= stopFollowDistance && npcMoving) {
             playAnimationByCategory('idle');
             npcMoving = false;
@@ -2983,7 +2979,7 @@
         npcAvatar.position.set(0, 0, -2.2);
         
         // Make NPC face the user
-        npcAvatar.rotation.y = Math.PI;
+        npcAvatar.rotation.y = 0;
         
         // Ensure idle animation is playing
         if (npcMixer && npcAnimations['idle']) {
