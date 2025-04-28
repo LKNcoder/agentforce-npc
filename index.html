@@ -967,7 +967,7 @@
 
 function createExitButton() {
     // Create a red exit button
-    const geometry = new THREE.CylinderGeometry(0.03, 0.03, 0.03, 32);
+    const geometry = new THREE.CylinderGeometry(0.05, 0.05, 0.03, 32);
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xFF0000,  // Bright red
         emissive: 0x770000, // Red glow
@@ -978,7 +978,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 0.8, -0.2);
+    exitButton.position.set(0, 1, -0.4);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1482,14 +1482,18 @@ function createModelLabel(modelObject, name) {
     const labelGeometry = new THREE.PlaneGeometry(1.5, 0.4);
     const label = new THREE.Mesh(labelGeometry, labelMaterial);
     
-    // Position above model (estimate model height)
-    label.position.y = 2.0;
+    // Get world position from the model for the label
+    const modelPos = new THREE.Vector3();
+    modelObject.getWorldPosition(modelPos);
     
-    // Add to model object
-    modelObject.add(label);
+    // Position label above model in world space
+    label.position.set(modelPos.x, modelPos.y + 2.5, modelPos.z);
     
-    // Make label always face the camera
-    modelObject.userData.isLabel = true;
+    // Mark as a label specifically
+    label.userData.isLabel = true;
+    
+    // Add directly to scene (NOT to the model)
+    scene.add(label);
 }
 
 
@@ -1517,8 +1521,7 @@ function createModelLabel(modelObject, name) {
                 
                 const modelObject = gltf.scene;
                 
-                modelObject.rotation.x = -Math.PI/2;
-                
+                                
                 // Make sure all objects cast and receive shadows
                 modelObject.traverse((child) => {
                     if (child.isMesh) {
