@@ -876,6 +876,7 @@
             lookOutRight: 'eyeLookOutRight'
         };
         let vrInitialized = false;
+        let npcLoaded = false;
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -962,6 +963,12 @@
 
         // Exit VR button functionality
         document.addEventListener('DOMContentLoaded', function() {
+
+            // Load NPC model in the background as soon as page loads
+    loadingManager = new THREE.LoadingManager();
+    setupLoaders();
+    loadNPCAvatar();
+
             const exitButton = document.getElementById('exitVrButton');
             if (exitButton) {
                 exitButton.addEventListener('click', function() {
@@ -1107,6 +1114,17 @@
             animate();
         }
 
+    function setupLoaders() {
+    // Create and configure DRACOLoader
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    
+    // Create the GLTFLoader and add the DRACOLoader to it
+    gltfLoader = new GLTFLoader(loadingManager);
+    gltfLoader.setDRACOLoader(dracoLoader);
+}
+
+
         function setupLighting() {
             // Ambient light
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
@@ -1128,27 +1146,71 @@
         }
 
         function createEnvironment() {
-            // Create ground
-            const groundGeometry = new THREE.PlaneGeometry(100, 100);
-            const groundMaterial = new THREE.MeshStandardMaterial({ 
-                color: 0x7CFC00, // Lawn green
-                roughness: 0.8,
-                metalness: 0.2
-            });
-            ground = new THREE.Mesh(groundGeometry, groundMaterial);
-            ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-            ground.receiveShadow = true;
-            scene.add(ground);
+           // Load the world.glb model
+    gltfLoader.load(
+        'world.glb',
+        function(gltf) {
+            console.log('World environment loaded successfully');
             
-            // Add simple skybox
-            const skyGeometry = new THREE.SphereGeometry(500, 32, 32);
-            const skyMaterial = new THREE.MeshBasicMaterial({
-                color: 0x87CEEB,
-                side: THREE.BackSide
+            // Add the entire model to the scene
+            const worldModel = gltf.scene;
+            scene.add(worldModel);
+            
+            // Find the ground mesh in the model for teleportation
+            worldModel.traverse((child) => {
+                if (child.isMesh) {
+                    console.log(`Found mesh in world: ${child.name}`);
+                    
+                    // Assume mesh with "ground" in the name is our ground plane
+                    // Adjust this condition based on your actual model's naming
+                    if (child.name.toLowerCase().includes('ground') || 
+                        child.name.toLowerCase().includes('floor') || 
+                        child.name.toLowerCase().includes('plane')) {
+                        
+                        console.log(`Using ${child.name} as ground for teleportation`);
+                        ground = child;
+                        ground.receiveShadow = true;
+                    }
+                    
+                    // Make sure all meshes cast and receive shadows
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
             });
-            const sky = new THREE.Mesh(skyGeometry, skyMaterial);
-            scene.add(sky);
+            
+            // If no ground was identified, create a backup invisible ground plane
+            if (!ground) {
+                console.warn('No ground mesh found in world.glb, creating invisible ground plane');
+                const groundGeometry = new THREE.PlaneGeometry(100, 100);
+                const groundMaterial = new THREE.MeshStandardMaterial({ 
+                    color: 0x7CFC00,
+                    transparent: true,
+                    opacity: 0.0
+                });
+                ground = new THREE.Mesh(groundGeometry, groundMaterial);
+                ground.rotation.x = -Math.PI / 2; // Rotate to be horizontal
+                ground.position.y = 0; // At floor level
+                ground.receiveShadow = true;
+                scene.add(ground);
+            }
+            
+            // Hide loading message if in VR
+            if (renderer && renderer.xr.isPresenting && vrSpeechBubble) {
+                vrSpeechBubble.visible = false;
+            }
+        },
+        function(xhr) {
+            console.log('World model loading: ' + (xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        function(error) {
+            console.error('Error loading world model:', error);
+            
+            // Fall back to the original simple environment
+            console.log('Creating fallback environment');
+            createFallbackEnvironment();
         }
+    );
+}
 
         function setupControllers() {
             // Controller setup for VR
@@ -2843,54 +2905,70 @@
 
         // Update NPC movement to follow user
         function updateNPCMovement() {
-            if (!npcAvatar || !cameraRig) return;
+    if (!npcAvatar || !cameraRig) return;
+    
+    // Add this check to ensure the feature is enabled
+    let npcFollowingEnabled = true; // You can make this a proper global variable if needed
+    
+    // If NPC should follow the user
+    if (npcFollowingUser && npcFollowingEnabled) {
+        // Get direction to user camera/rig
+        const userPosition = new THREE.Vector3();
+        cameraRig.getWorldPosition(userPosition);
+        
+        // Create a direction vector towards the user
+        const direction = new THREE.Vector3();
+        direction.subVectors(userPosition, npcAvatar.position);
+        direction.y = 0; // Keep on ground plane
+        
+        // Calculate distance to user
+        const distance = direction.length();
+        
+        // Define optimal following distance and buffer zones
+        const optimalDistance = 2.0;
+        const startFollowDistance = optimalDistance + 0.5; // Start following at 2.5m
+        const stopFollowDistance = optimalDistance - 0.3; // Stop at 1.7m (prevent oscillation)
+        
+        // If far enough away, move towards user
+        if (distance > startFollowDistance) {
+            direction.normalize();
             
-            // If NPC should follow the user
-            if (npcFollowingUser) {
-                // Get direction to user camera/rig
-                const userPosition = new THREE.Vector3();
-                cameraRig.getWorldPosition(userPosition);
-                
-                // Create a direction vector towards the user
-                const direction = new THREE.Vector3();
-                direction.subVectors(userPosition, npcAvatar.position);
-                direction.y = 0; // Keep on ground plane
-                
-                // Calculate distance to user
-                const distance = direction.length();
-                
-                // If not too close, move towards user
-                if (distance > 2.0) {
-                    direction.normalize();
-                    
-                    // Move NPC towards user
-                    const moveSpeed = 0.02;
-                    npcAvatar.position.x += direction.x * moveSpeed;
-                    npcAvatar.position.z += direction.z * moveSpeed;
-                    
-                    // Rotate NPC to face user
-                    npcAvatar.lookAt(
-                        userPosition.x,
-                        npcAvatar.position.y,
-                        userPosition.z
-                    );
-                    
-                    // If not already walking, start the walk animation
-                    if (!npcMoving) {
-                        playAnimationByCategory('walk');
-                        npcMoving = true;
-                    }
+            // Calculate a smooth movement speed based on distance
+            const baseSpeed = 0.02;
+            const speedFactor = Math.min(1.5, distance / optimalDistance);
+            const moveSpeed = baseSpeed * speedFactor;
+            
+            // Rotate NPC to face user (smooth rotation)
+            const targetRotation = Math.atan2(direction.x, direction.z);
+            
+            // Apply smooth rotation (lerp between current and target rotation)
+            const currentY = npcAvatar.rotation.y;
+            const targetY = targetRotation;
+            npcAvatar.rotation.y = THREE.MathUtils.lerp(currentY, targetY, 0.1);
+            
+            // Only move forward based on NPC's current facing direction
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(npcAvatar.quaternion);
+            npcAvatar.position.add(forward.multiplyScalar(moveSpeed));
+            
+            // If not already walking, start the walk animation with appropriate speed
+            if (!npcMoving) {
+                const walkAction = playAnimationByCategory('walk');
+                if (walkAction) {
+                    walkAction.timeScale = speedFactor; // Match animation speed to movement
                 }
-                // If close enough and currently walking, return to idle
-                else if (distance <= 2.0 && npcMoving) {
-                    playAnimationByCategory('idle');
-                    npcMoving = false;
-                }
+                npcMoving = true;
             }
         }
+        // If close enough and currently walking, return to idle
+        else if (distance <= stopFollowDistance && npcMoving) {
+            playAnimationByCategory('idle');
+            npcMoving = false;
+        }
+    }
+}
 
         // Handle VR session start
-        function handleVRSessionStart() {
+    function handleVRSessionStart() {
     console.log('VR session started');
 
     // Initialize audio context immediately after user interaction
@@ -2900,19 +2978,23 @@
         });
     }
     
-    // Force NPC animations to play
-    if (npcAvatar && npcMixer && npcAnimations['idle']) {
-        npcAnimations['idle'].reset().setEffectiveWeight(1.0).play();
-        npcMixer.update(0);
+    if (npcAvatar) {
+        // Place NPC a comfortable distance in front of the user
+        npcAvatar.position.set(0, 0, -2.2);
+        
+        // Make NPC face the user
+        npcAvatar.rotation.y = Math.PI;
+        
+        // Ensure idle animation is playing
+        if (npcMixer && npcAnimations['idle']) {
+            npcAnimations['idle'].reset().setEffectiveWeight(1.0).play();
+            npcMixer.update(0);
+        }
     }
     
-    // Reset camera rig position when entering VR
+    // Reset camera rig position
     cameraRig.position.set(0, 0, 0);
-    
-    // Make sure camera is at the right height in the rig
     camera.position.y = userHeight;
-    camera.position.x = 0;
-    camera.position.z = 0;
     
     // Delay the welcome message until VR is fully initialized
     setTimeout(() => {
