@@ -755,7 +755,7 @@
                         <h3>Contact</h3>
                         <ul>
                             <li><a href="#">123 Play Avenue</a></li>
-                            <li><a href="#">Sunnyville, CA 90210</a></li>
+                            <li><a href="#">Sunnyville, TX 28180</a></li>
                             <li><a href="#">(555) 123-4567</a></li>
                             <li><a href="#">info@sunnyville.com</a></li>
                         </ul>
@@ -905,46 +905,60 @@
 
         // Handle VR button click
         document.getElementById('enter-vr-button').addEventListener('click', function(e) {
-            e.preventDefault();
-            
-            // Show loading screen
-            document.getElementById('vr-loading').style.display = 'flex';
-            
-            // Check if WebXR is supported
-            if ('xr' in navigator) {
-                navigator.xr.isSessionSupported('immersive-vr')
-                    .then((supported) => {
-                        if (supported) {
-                            // Hide website content, show VR content after slight delay
-                            setTimeout(() => {
-                                document.getElementById('website-content').style.display = 'none';
-                                document.getElementById('vr-experience').style.display = 'block';
-                                document.getElementById('vr-loading').style.display = 'none';
-                                
-                                // Initialize VR experience if not already initialized
-                                if (!vrInitialized) {
-                                    initVRExperience();
-                                    vrInitialized = true;
-                                }
-                            }, 1500);
-                        } else {
-                            // WebXR is supported but immersive-vr is not
-                            document.getElementById('vr-loading').style.display = 'none';
-                            showVRNotSupportedMessage();
-                        }
-                    })
-                    .catch(error => {
-                        // Error checking VR support
-                        console.error('Error checking VR support:', error);
+    e.preventDefault();
+    
+    // Show loading screen
+    document.getElementById('vr-loading').style.display = 'flex';
+    
+    // Check if WebXR is supported
+    if ('xr' in navigator) {
+        navigator.xr.isSessionSupported('immersive-vr')
+            .then((supported) => {
+                if (supported) {
+                    // Initialize VR experience if not already initialized
+                    if (!vrInitialized) {
+                        initVRExperience();
+                        vrInitialized = true;
+                    }
+                    
+                    // Request VR session directly
+                    navigator.xr.requestSession('immersive-vr', {
+                        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
+                    }).then((session) => {
+                        // Connect the session to the renderer
+                        renderer.xr.setSession(session);
+                        
+                        // Hide website content, show VR experience
+                        document.getElementById('website-content').style.display = 'none';
+                        document.getElementById('vr-experience').style.display = 'block';
+                        document.getElementById('vr-loading').style.display = 'none';
+                        
+                        // Session has been successfully requested and started
+                        console.log('VR session has started');
+                        
+                    }).catch(error => {
+                        console.error('Error starting VR session:', error);
                         document.getElementById('vr-loading').style.display = 'none';
                         showVRNotSupportedMessage();
                     });
-            } else {
-                // WebXR is not supported at all
+                } else {
+                    // WebXR is supported but immersive-vr is not
+                    document.getElementById('vr-loading').style.display = 'none';
+                    showVRNotSupportedMessage();
+                }
+            })
+            .catch(error => {
+                // Error checking VR support
+                console.error('Error checking VR support:', error);
                 document.getElementById('vr-loading').style.display = 'none';
                 showVRNotSupportedMessage();
-            }
-        });
+            });
+    } else {
+        // WebXR is not supported at all
+        document.getElementById('vr-loading').style.display = 'none';
+        showVRNotSupportedMessage();
+    }
+});
 
         // Exit VR button functionality
         document.addEventListener('DOMContentLoaded', function() {
@@ -1028,12 +1042,7 @@
             renderer.shadowMap.enabled = true;
             document.getElementById('vr-experience').appendChild(renderer.domElement);
             
-            // Set up VR button
-            document.getElementById('vr-experience').appendChild(
-                VRButton.createButton(renderer, {
-                    optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
-                })
-            );
+          
 
             renderer.xr.addEventListener('sessionstart', handleVRSessionStart);
             renderer.xr.addEventListener('sessionend', handleVRSessionEnd);
