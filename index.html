@@ -964,6 +964,66 @@
     }
 });
 
+
+function createExitButton() {
+    // Create a red exit button
+    const geometry = new THREE.CylinderGeometry(0.15, 0.15, 0.05, 32);
+    const material = new THREE.MeshStandardMaterial({ 
+        color: 0xFF0000,  // Bright red
+        emissive: 0x770000, // Red glow
+        roughness: 0.3,
+        metalness: 0.8
+    });
+    
+    const exitButton = new THREE.Mesh(geometry, material);
+    
+    // Position it in a more visible location
+    exitButton.position.set(0, 0.8, -1.0);
+    exitButton.rotation.x = Math.PI / 2; // Make it face upward
+    exitButton.userData.isInteractable = true;
+    exitButton.userData.type = 'exitButton';
+    
+      scene.add(exitButton);
+    
+    // Store reference for interaction detection
+    window.exitButton = exitButton;
+    
+    return exitButton;
+}
+
+function checkExitButtonIntersection() {
+    if (!controller1 || !window.exitButton) return;
+    
+    const tempMatrix = new THREE.Matrix4();
+    tempMatrix.identity().extractRotation(controller1.matrixWorld);
+    
+    const raycaster = new THREE.Raycaster();
+    const rayOrigin = new THREE.Vector3();
+    const rayDirection = new THREE.Vector3(0, 0, -1);
+    
+    rayOrigin.setFromMatrixPosition(controller1.matrixWorld);
+    rayDirection.applyMatrix4(tempMatrix);
+    raycaster.set(rayOrigin, rayDirection);
+    
+    const intersects = raycaster.intersectObject(window.exitButton);
+    
+    // If the controller is pointing at the exit button and trigger is pressed
+    if (intersects.length > 0) {
+        window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
+        
+        // Check if button is pressed (use the existing selectstart event)
+        controller1.addEventListener('selectstart', function exitVROnButtonPress() {
+            console.log("Exit button pressed - leaving VR");
+            sayGoodbye();
+            controller1.removeEventListener('selectstart', exitVROnButtonPress);
+        }, { once: true });
+    } else {
+        if (window.exitButton.material) {
+            window.exitButton.material.emissive.setHex(0x770000); // Reset when not pointed at
+        }
+    }
+}
+
         // Exit VR button functionality
         document.addEventListener('DOMContentLoaded', function() {
             // Create scene first
@@ -1072,7 +1132,7 @@
             // Set up controllers
             setupControllers();
 
-            createMuteToggle();
+            createExitButton();
             
             setupSpatialAudio();
             
@@ -3312,6 +3372,11 @@ function sayGoodbye() {
                object.lookAt(camera.position);
                 }
                 });
+
+                // Check for exit button interaction in VR
+if (renderer.xr.isPresenting && window.exitButton) {
+    checkExitButtonIntersection();
+}
 
                 // Update eye position to look at camera
                 if (npcAvatar && eyeMovementActive && !isBlinking) {
