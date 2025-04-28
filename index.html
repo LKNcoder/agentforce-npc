@@ -877,6 +877,9 @@
         };
         let vrInitialized = false;
         let npcLoaded = false;
+        let lastPlayerPosition = new THREE.Vector3();
+        let npcMovementTimeout = null;
+        let npcMovementCooldown = false;
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -2810,15 +2813,132 @@ function createModelLabel(modelObject, name) {
 
         // Teleport end handler
         function onTeleportEnd(event) {
-            if (isTeleporting && teleportMarker.visible) {
-                // Teleport to the marked position
-                cameraRig.position.x = teleportPoint.x;
-                cameraRig.position.z = teleportPoint.z;
+    if (isTeleporting && teleportMarker.visible) {
+        // Teleport to the marked position
+        cameraRig.position.x = teleportPoint.x;
+        cameraRig.position.z = teleportPoint.z;
+        
+        // Store new player position
+        const currentPosition = new THREE.Vector3();
+        cameraRig.getWorldPosition(currentPosition);
+        
+        // Check if player actually moved significantly
+        if (currentPosition.distanceTo(lastPlayerPosition) > 0.5) {
+            // Update last position
+            lastPlayerPosition.copy(currentPosition);
+            
+            // Clear any existing movement timeout
+            if (npcMovementTimeout) {
+                clearTimeout(npcMovementTimeout);
             }
             
-            isTeleporting = false;
-            teleportMarker.visible = false;
+            // Trigger NPC movement after a short delay
+            npcMovementTimeout = setTimeout(() => {
+                startNPCMovement();
+            }, 500);
         }
+    }
+    
+    isTeleporting = false;
+    teleportMarker.visible = false;
+}
+
+function startNPCMovement() {
+    if (!npcAvatar || npcSpeaking || npcMovementCooldown) return;
+    
+    // Get player position
+    const userPosition = new THREE.Vector3();
+    cameraRig.getWorldPosition(userPosition);
+    
+    // Get direction to player
+    const direction = new THREE.Vector3();
+    direction.subVectors(userPosition, npcAvatar.position);
+    direction.y = 0;
+    
+    // Calculate distance
+    const distance = direction.length();
+    const optimalDistance = 2.0;
+    
+    // Only move if significantly far away
+    if (distance > optimalDistance + 1.0) {
+        console.log("Player teleported - NPC following to new position");
+        
+        // Calculate target position (slightly in front of player)
+        direction.normalize();
+        const targetPosition = new THREE.Vector3();
+        targetPosition.copy(userPosition).sub(direction.multiplyScalar(optimalDistance));
+        
+        // Move NPC to position over time
+        npcMoving = true;
+        npcMovementCooldown = true;
+        
+        // Play walking animation
+        playAnimationByCategory('walk');
+        
+        // Smoothly move to target position
+        moveNPCToPosition(targetPosition, 2.0);
+    }
+}
+
+function moveNPCToPosition(targetPosition, duration) {
+    // Store initial position
+    const startPosition = npcAvatar.position.clone();
+    const startTime = performance.now();
+    
+    // Calculate direction for facing
+    const faceDir = new THREE.Vector3();
+    faceDir.subVectors(cameraRig.position, targetPosition).normalize();
+    const targetRotation = Math.atan2(faceDir.x, faceDir.z);
+    
+    // Create animation function
+    function animateMove() {
+        const now = performance.now();
+        const elapsed = (now - startTime) / 1000; // seconds
+        const progress = Math.min(elapsed / duration, 1.0);
+        
+        // Use easing function for smoother motion
+        const eased = easeInOutCubic(progress);
+        
+        // Interpolate position
+        npcAvatar.position.lerpVectors(startPosition, targetPosition, eased);
+        
+        // Smoothly rotate to face player
+        npcAvatar.rotation.y = THREE.MathUtils.lerp(
+            npcAvatar.rotation.y,
+            targetRotation,
+            0.05
+        );
+        
+        // Continue animation if not complete
+        if (progress < 1.0) {
+            requestAnimationFrame(animateMove);
+        } else {
+            // Animation complete
+            npcMoving = false;
+            
+            // Return to idle animation if not speaking
+            if (!npcSpeaking) {
+                playAnimationByCategory('idle');
+            }
+            
+            // Reset cooldown after delay to prevent immediate movement
+            setTimeout(() => {
+                npcMovementCooldown = false;
+            }, 2000);
+        }
+    }
+    
+    // Start animation
+    animateMove();
+}
+
+// Easing function for smoother motion
+function easeInOutCubic(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+}
+
+
+
 
         // Update teleport target visual
         function updateTeleportTarget() {
@@ -3008,86 +3128,25 @@ function createModelLabel(modelObject, name) {
             }, 1000);
         }
 
-        // Update spawn location in a circular pattern
-        function updateModelSpawnPoint() {
-            // Create a circular arrangement of products around the user
-            const radius = 2.0;
-            const angle = (productModels.length + 1) * (Math.PI / 4); // 45-degree spacing
-            
-            modelSpawnPoint.x = Math.cos(angle) * radius;
-            modelSpawnPoint.z = Math.sin(angle) * radius - 1.0; // Offset forward
-        }
+
+
+   
 
         // Update NPC movement to follow user
         function updateNPCMovement() {
-    // Skip if NPC or camera rig isn't available
-    if (!npcAvatar || !cameraRig) return;
-    
-    // Only proceed if NPC should follow user
-    if (npcFollowingUser) {
-        // Get player position
+  
+
+    if (npcAvatar && !npcSpeaking && renderer.xr.isPresenting) {
+        // Make NPC look at player
+        const npcPosition = new THREE.Vector3();
+        npcAvatar.getWorldPosition(npcPosition);
+        
         const userPosition = new THREE.Vector3();
         cameraRig.getWorldPosition(userPosition);
         
-        // Get direction vector to player
-        const direction = new THREE.Vector3();
-        direction.subVectors(userPosition, npcAvatar.position);
-        direction.y = 0; // Keep on ground plane (no flying!)
-        
-        // Calculate current distance to player
-        const distance = direction.length();
-        
-        // Define optimal distance parameters
-        const optimalDistance = 2.0; // Target distance to maintain
-        const followThreshold = 0.7;  // How much deviation from optimal before moving
-        const stopThreshold = 0.2;    // How close to optimal before stopping
-        
-        // Only start moving if we're significantly far from optimal distance
-        const shouldStartMoving = distance > (optimalDistance + followThreshold) && !npcMoving;
-        
-        // Stop when we reach an acceptable range around optimal distance
-        const shouldStopMoving = distance < (optimalDistance + stopThreshold) && npcMoving;
-        
-         // Debug distance
-         if (renderer.xr.isPresenting) {
-            console.log(`Distance: ${distance.toFixed(2)}m | Moving: ${npcMoving} | Start: ${shouldStartMoving} | Stop: ${shouldStopMoving}`);
-        }
-        
-        // Handle movement state changes
-        if (shouldStartMoving && !npcSpeaking) {
-            console.log("Starting to follow player");
-            npcMoving = true;
-            playAnimationByCategory('walk');
-        }
-        else if (shouldStopMoving) {
-            console.log("Stopping - reached optimal distance");
-            npcMoving = false;
-            if (!npcSpeaking) {
-                playAnimationByCategory('idle');
-            }
-        }
-        
-        // Move NPC if currently in moving state
-        if (npcMoving) {
-            // Normalize direction vector
-            direction.normalize();
-            
-            // Calculate speed based on distance (faster when farther)
-            const baseSpeed = 0.015;
-            const speedFactor = Math.min(1.3, (distance - optimalDistance) / 2);
-            const moveSpeed = baseSpeed * speedFactor;
-            
-            // Rotate NPC to face player
-            const targetRotation = Math.atan2(direction.x, direction.z);
-            npcAvatar.rotation.y = THREE.MathUtils.lerp(
-                npcAvatar.rotation.y, 
-                targetRotation, 
-                0.1
-            );
-            
-            // Move directly toward player
-            npcAvatar.position.x += direction.x * moveSpeed;
-            npcAvatar.position.z += direction.z * moveSpeed;
+        // Only rotate head/eyes, not full body unless moving
+        if (!npcMoving) {
+            // Update eye tracking is handled separately
         }
     }
 }
