@@ -880,6 +880,8 @@
         let lastPlayerPosition = new THREE.Vector3();
         let npcMovementTimeout = null;
         let npcMovementCooldown = false;
+        let exitButtonListenerActive = false;
+        let exitButtonListener = null;
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -978,7 +980,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 1.1, -0.5);
+    exitButton.position.set(0, 1.05, -0.45);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1007,17 +1009,32 @@ function checkExitButtonIntersection() {
     
     const intersects = raycaster.intersectObject(window.exitButton);
     
-    // If the controller is pointing at the exit button and trigger is pressed
+    // If the controller is pointing at the exit button
     if (intersects.length > 0) {
         window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
         
-        // Check if button is pressed (use the existing selectstart event)
-        controller1.addEventListener('selectstart', function exitVROnButtonPress() {
-            console.log("Exit button pressed - leaving VR");
-            sayGoodbye();
-            controller1.removeEventListener('selectstart', exitVROnButtonPress);
-        }, { once: true });
+        // Only add the listener if it's not already active
+        if (!exitButtonListenerActive) {
+            // Define the listener function
+            exitButtonListener = function exitVROnButtonPress() {
+                console.log("Exit button pressed - leaving VR");
+                sayGoodbye();
+                // Cleanup is handled by the listener removal below
+            };
+            
+            // Add the listener
+            controller1.addEventListener('selectstart', exitButtonListener);
+            exitButtonListenerActive = true;
+            console.log("Exit button listener added");
+        }
     } else {
+        // Not pointing at exit button, remove the listener if it exists
+        if (exitButtonListenerActive) {
+            controller1.removeEventListener('selectstart', exitButtonListener);
+            exitButtonListenerActive = false;
+            console.log("Exit button listener removed");
+        }
+        
         if (window.exitButton.material) {
             window.exitButton.material.emissive.setHex(0x770000); // Reset when not pointed at
         }
