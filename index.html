@@ -1083,6 +1083,8 @@
 
             // Load avatar models
             loadAvatarModels();
+
+            loadPlaygroundModels();
             
             // Handle window resize
             window.addEventListener('resize', onWindowResize);
@@ -1374,6 +1376,73 @@
                 }, 200);
             }
         }
+
+
+
+
+
+
+
+    function loadPlaygroundModels() {
+    console.log('Loading playground equipment models...');
+    
+    // Define model information (without positions since they're baked in)
+    const playgroundModels = [
+        { path: 'model1.glb', name: 'Adventure Tower' },
+        { path: 'model2.glb', name: 'Nature Explorer' },
+        { path: 'model3.glb', name: 'Toddler Zone' },
+        { path: 'sandbox1.glb', name: 'Standard Sandbox' },
+        { path: 'sandbox2.glb', name: 'Deluxe Sandbox' },
+        { path: 'swingset.glb', name: 'Premium Swing Set' }
+    ];
+
+    // Load each model with its baked-in position
+    playgroundModels.forEach((model) => {
+        console.log(`Loading model: ${model.path}`);
+        
+        gltfLoader.load(
+            model.path,
+            (gltf) => {
+                console.log(`Successfully loaded: ${model.path}`);
+                
+                const modelObject = gltf.scene;
+                
+                // Don't modify position - use the baked-in position
+                // modelObject is already positioned correctly from the file
+                
+                // Make sure all objects cast and receive shadows
+                modelObject.traverse((child) => {
+                    if (child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                    }
+                });
+                
+                // Create label for the model
+                createModelLabel(modelObject, model.name);
+                
+                // Add to scene
+                scene.add(modelObject);
+                
+                // Store reference in product models array
+                productModels.push(modelObject);
+            },
+            (xhr) => {
+                // Progress update
+                const percentComplete = (xhr.loaded / xhr.total) * 100;
+                console.log(`${model.path} ${percentComplete.toFixed(1)}% loaded`);
+            },
+            (error) => {
+                console.error(`Error loading ${model.path}:`, error);
+            }
+        );
+    });
+}
+
+
+
+
+
 
         function loadAvatarModels() {
             console.log('Starting to load avatar models...');
@@ -2926,22 +2995,40 @@
         // Define optimal distance parameters
         const optimalDistance = 2.0; // Target distance to maintain
         const followThreshold = 0.7;  // How much deviation from optimal before moving
+        const stopThreshold = 0.2;    // How close to optimal before stopping
         
-        // NPC will only move if player is too far away
-        const tooFar = distance > (optimalDistance + followThreshold);
-        // NPC will stop when it gets close enough
-        const closeEnough = distance < (optimalDistance + 0.2);
+        // Only start moving if we're significantly far from optimal distance
+        const shouldStartMoving = distance > (optimalDistance + followThreshold) && !npcMoving;
         
-        // Debug distance
-        console.log(`Distance to player: ${distance.toFixed(2)}m, Moving: ${npcMoving}, TooFar: ${tooFar}, CloseEnough: ${closeEnough}`);
+        // Stop when we reach an acceptable range around optimal distance
+        const shouldStopMoving = distance < (optimalDistance + stopThreshold) && npcMoving;
         
-        // Start moving if player is too far
-        if (tooFar) {
+         // Debug distance
+         if (renderer.xr.isPresenting) {
+            console.log(`Distance: ${distance.toFixed(2)}m | Moving: ${npcMoving} | Start: ${shouldStartMoving} | Stop: ${shouldStopMoving}`);
+        }
+        
+        // Handle movement state changes
+        if (shouldStartMoving && !npcSpeaking) {
+            console.log("Starting to follow player");
+            npcMoving = true;
+            playAnimationByCategory('walk');
+        }
+        else if (shouldStopMoving) {
+            console.log("Stopping - reached optimal distance");
+            npcMoving = false;
+            if (!npcSpeaking) {
+                playAnimationByCategory('idle');
+            }
+        }
+        
+        // Move NPC if currently in moving state
+        if (npcMoving) {
             // Normalize direction vector
             direction.normalize();
             
             // Calculate speed based on distance (faster when farther)
-            const baseSpeed = 0.015; // Slightly slower base speed
+            const baseSpeed = 0.015;
             const speedFactor = Math.min(1.3, (distance - optimalDistance) / 2);
             const moveSpeed = baseSpeed * speedFactor;
             
@@ -2956,22 +3043,6 @@
             // Move directly toward player
             npcAvatar.position.x += direction.x * moveSpeed;
             npcAvatar.position.z += direction.z * moveSpeed;
-            
-            // Start walking animation if not already moving
-            if (!npcMoving && !npcSpeaking) {
-                console.log("Starting walk animation");
-                const walkAction = playAnimationByCategory('walk');
-                if (walkAction) walkAction.timeScale = speedFactor;
-                npcMoving = true;
-            }
-        }
-        // Stop and return to idle when close enough
-        else if (closeEnough && npcMoving) {
-            console.log("Stopping - reached optimal distance");
-            npcMoving = false;
-            if (!npcSpeaking) {
-                playAnimationByCategory('idle');
-            }
         }
     }
 }
