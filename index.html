@@ -965,7 +965,9 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Create scene first
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(black);
+    scene.background = new THREE.Color(0x000000); // Black background
+
+            // Set up fog
     scene.fog = new THREE.Fog(0x87CEEB, 0.1, 1000); // Add fog to the scene
 
             // Load NPC model in the background as soon as page loads
