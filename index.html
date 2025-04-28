@@ -2523,20 +2523,25 @@
             // Play the appropriate animation
             playAnimationByCategory(animationCategory);
             
-            // Play audio through positional audio for 3D effect if available
-            if (positionalAudio && audioListener) {
-                // Create a buffer from the Audio element
-                const audioContext = audioListener.context;
-                const source = audioContext.createMediaElementSource(audio);
-                positionalAudio.setMediaElementSource(audio);
-                audio.play();
-            } else {
-                // Fallback to regular audio playback
-                audio.play();
-            }
+            // CHANGE: Try direct audio playback first, skip positional audio which may have issues
+            audio.play().catch(e => {
+                console.error("Direct audio play failed:", e);
+            });
+            
+            // Set a timeout to ensure animation returns to idle
+            const estimatedDuration = audio.duration || 5; // Default to 5 seconds if duration unknown
+            setTimeout(() => {
+                if (npcSpeaking && animationCategory === 'greeting') {
+                    console.log("Forcing return to idle animation after greeting timeout");
+                    npcSpeaking = false;
+                    stopLipSync();
+                    playAnimationByCategory('idle');
+                }
+            }, (estimatedDuration * 1000) + 2000); // Audio duration + 2 seconds buffer
         };
         
         audio.onended = () => {
+            console.log("Audio playback ended, returning to idle animation");
             // Reset NPC state
             npcSpeaking = false;
             stopLipSync();
@@ -2558,6 +2563,14 @@
         audio.onerror = (e) => {
             console.error("Audio file playback error:", e);
             npcSpeaking = false;
+            
+            // Still show speech in text form
+            if (filename.includes("hello")) {
+                npcSpeak("Hello. Welcome to our virtual showroom. I'm Sunny. I'm here to help.");
+            } else if (filename.includes("thanks")) {
+                npcSpeak("Thanks for visiting. Goodbye.");
+            }
+            
             reject(new Error(`Failed to play audio file: ${filename}`));
         };
     });
