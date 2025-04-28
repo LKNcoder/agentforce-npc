@@ -967,7 +967,7 @@
 
 function createExitButton() {
     // Create a red exit button
-    const geometry = new THREE.CylinderGeometry(0.05, 0.05, 0.03, 32);
+    const geometry = new THREE.CylinderGeometry(0.04, 0.04, 0.03, 32);
     const material = new THREE.MeshStandardMaterial({ 
         color: 0xFF0000,  // Bright red
         emissive: 0x770000, // Red glow
@@ -978,7 +978,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 1, -0.4);
+    exitButton.position.set(0, 1.1, -0.5);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1116,6 +1116,7 @@ function checkExitButtonIntersection() {
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.xr.enabled = true;
             renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.getElementById('vr-experience').appendChild(renderer.domElement);
             
           
@@ -1196,24 +1197,28 @@ function checkExitButtonIntersection() {
 }
 
 
-        function setupLighting() {
-            // Ambient light
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
-            scene.add(ambientLight);
-            
-            // Directional light (sun)
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(10, 10, 10);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 1024;
-            directionalLight.shadow.mapSize.height = 1024;
-            directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 50;
-            directionalLight.shadow.camera.left = -10;
-            directionalLight.shadow.camera.right = 10;
-            directionalLight.shadow.camera.top = 10;
-            directionalLight.shadow.camera.bottom = -10;
-            scene.add(directionalLight);
+function setupLighting() {
+    // Ambient light
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambientLight);
+    
+    // Directional light (sun)
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(10, 10, 10);
+    directionalLight.castShadow = true;
+    
+    // IMPROVED SHADOW SETTINGS
+    directionalLight.shadow.mapSize.width = 2048;  // Higher resolution shadows
+    directionalLight.shadow.mapSize.height = 2048; // Higher resolution shadows
+    directionalLight.shadow.camera.near = 0.5;
+    directionalLight.shadow.camera.far = 60;
+    directionalLight.shadow.camera.left = -15;
+    directionalLight.shadow.camera.right = 15;
+    directionalLight.shadow.camera.top = 15;
+    directionalLight.shadow.camera.bottom = -15;
+    directionalLight.shadow.bias = -0.0005;  // Reduce shadow acne
+    
+    scene.add(directionalLight);
         }
 
         function createEnvironment() {
