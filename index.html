@@ -1135,7 +1135,20 @@ function checkExitButtonIntersection() {
     }
 }
 
-        // Exit VR button functionality
+// Initialize loaders for 3D assets
+function setupLoaders() {
+    // Create and configure DRACOLoader for compressed models
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    
+    // Create the GLTFLoader and configure it with the DRACOLoader
+    gltfLoader = new GLTFLoader(loadingManager);
+    gltfLoader.setDRACOLoader(dracoLoader);
+    
+    console.log('3D model loaders initialized');
+}
+
+        // Function to set up the loading manager and loaders
         document.addEventListener('DOMContentLoaded', function() {
     // Create basic scene and renderer only - don't initialize everything yet
     scene = new THREE.Scene();
