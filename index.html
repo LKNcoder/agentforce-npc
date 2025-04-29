@@ -944,30 +944,40 @@ body.vr-active #vr-experience {
     // Handle VR button click
     document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
+    console.log('Enter VR button clicked');
     
-    // Show loading indicator
+    // Show loading screen
     document.getElementById('vr-loading').style.display = 'flex';
     
-    // Initialize VR experience if needed
+    // Initialize VR if needed (but renderer already exists)
     if (!vrInitialized) {
+        console.log('Initializing VR experience');
         initVRExperience();
         vrInitialized = true;
     }
     
-    // Request VR session directly
+    // Now request the VR session
+    console.log('Requesting VR session');
     navigator.xr.requestSession('immersive-vr', {
         optionalFeatures: ['local-floor']
     }).then(session => {
-        // Connect the session to the renderer
+        console.log('VR session obtained successfully');
+        
+        // Add renderer to DOM now if not already there
+        if (!renderer.domElement.parentElement) {
+            document.getElementById('vr-experience').appendChild(renderer.domElement);
+        }
+        
+        // Connect session to renderer
         renderer.xr.setSession(session);
         
-        // Hide website content, show VR experience
+        // Show VR experience, hide website
         document.body.classList.add('vr-active');
         document.getElementById('website-content').style.display = 'none';
         document.getElementById('vr-experience').style.display = 'block';
         document.getElementById('vr-loading').style.display = 'none';
         
-        // Start animation loop if needed
+        // Start animation
         if (!clock) clock = new THREE.Clock();
         animate();
     }).catch(error => {
@@ -1109,6 +1119,12 @@ function checkExitButtonIntersection() {
     scene = new THREE.Scene();
     scene.background = new THREE.Color(0x000000); // Black background
 
+    // Create renderer early to ensure it exists before VR button click
+renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.xr.enabled = true; // Enable WebXR right away
+
             // Set up fog
     scene.fog = new THREE.Fog(0x87CEEB, 0.1, 1000); // Add fog to the scene
 
@@ -1190,10 +1206,7 @@ function checkExitButtonIntersection() {
             scene.add(cameraRig);
 
             // Set up renderer
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setPixelRatio(window.devicePixelRatio);
-            renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.xr.enabled = true;
+           
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.getElementById('vr-experience').appendChild(renderer.domElement);
