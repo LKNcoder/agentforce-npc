@@ -1011,7 +1011,7 @@ document.getElementById('enter-vr-button').addEventListener('click', function(e)
     
     // Start the permission request
     requestMicAccess();
-});
+
  
     // Function to initialize VR with or without mic
  function initVRWithMic() {
@@ -1630,18 +1630,18 @@ function createModelLabel(modelObject, name) {
     let labelZ = 0;
     
     // Position based on model name 
-    if (name === 'Adventure Tower') {
+    if (name === 'Nature Explorer') {
         // Model 1 - Position to the left of user
         labelX = -8.0;
-        labelZ = 1.0;
-    } else if (name === 'Nature Explorer') {
+        labelZ = 1.5;
+    } else if (name === 'Adventure Tower') {
         // Model 2 - Position straight ahead
-        labelX = 0;
-        labelZ = -8.0;
+        labelX = -1.0;
+        labelZ = -9.0;
     } else if (name.includes('Toddler Zone')) {
         // Model 3 - Position to the right of user
-        labelX = 8.0;
-        labelZ = -1.0;
+        labelX = 7.0;
+        labelZ = 0;
     } else {
         // For other models, try to get position from the model
         const modelPos = new THREE.Vector3();
@@ -3425,6 +3425,12 @@ function handleTextOnlySpeech(text) {
 
         // Teleport start handler
         function onTeleportStart(event) {
+             // Don't start teleporting if pointing at the exit button
+    if (isPointingAtExitButton) {
+        console.log("Teleport start canceled - pointing at exit button");
+        return;
+    }
+
             isTeleporting = true;
             updateTeleportTarget();
         }
