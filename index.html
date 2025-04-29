@@ -2223,7 +2223,7 @@ function replaceModelWithPinkVersion() {
         }
 
         // Handle user speech
-        function handleUserSpeech(text) {
+    function handleUserSpeech(text) {
     console.log('User said:', text);
     
   // Don't allow new speech if already speaking
@@ -2240,6 +2240,20 @@ function replaceModelWithPinkVersion() {
     
     // Check for product showcase requests
     const lowerText = text.toLowerCase();
+
+
+     // Check if the user is asking if the NPC can hear them
+     if (lowerText.includes('can you hear me') || 
+        lowerText.includes('do you hear me') || 
+        lowerText.includes('are you listening')) {
+        // Use prerecorded "Of course!" phrase and affirmative animation
+        npcSpeak("Of course!");
+        
+        // Animation will be automatically selected as 'affirmative' in the npcSpeak function
+        // because the text contains "of course" which matches the affirmative condition
+        
+        return;
+    }
 
      // Check for "wood" keyword
      if (lowerText.includes('wood')) {
@@ -3704,13 +3718,10 @@ function easeInOutCubic(t) {
             playAudioFile("hello-welcome-to-our-virtual-s.mp3")
                 .then(() => {
                     console.log("Welcome audio played successfully");
-                    // After welcome completes, prompt user to ask questions
-                    setTimeout(() => {
-                        if (!npcSpeaking) {
-                            npcSpeak("Would you like me to show you some of our playground models?");
-                        }
-                    }, 1000);
-                })
+                // Set waitingForUserInput flag AFTER welcome completes
+                window.waitingForUserInput = true;
+                
+            })
                 .catch(err => {
                     console.error("Failed to play welcome audio:", err);
                     // Fallback to TTS if audio file fails
