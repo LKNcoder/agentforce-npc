@@ -955,70 +955,79 @@ body.vr-active #vr-experience {
               width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
     `;
     
-    // Simple initialization to ensure everything is created
-    if (!scene) scene = new THREE.Scene();
-    if (!renderer) {
-        console.log('Creating new renderer');
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setPixelRatio(window.devicePixelRatio);
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.getElementById('vr-experience').appendChild(renderer.domElement);
-    }
-    
-    // CRITICAL: Ensure WebXR is enabled
-    if (!renderer.xr.enabled) {
-        console.log('Enabling WebXR on renderer');
-        renderer.xr.enabled = true;
-    }
-    
-    // Initialize VR experience if needed
-    if (!vrInitialized) {
-        console.log('Initializing VR Experience');
-        initVRExperience(false); // Skip microphone for now to simplify
-        vrInitialized = true;
-    }
-    
-    // Direct approach - request VR session
-    console.log('Requesting VR session directly');
+    // Check if WebXR is supported
     if (!navigator.xr) {
-        showDetailedVRError('WebXR API not found in this browser');
+        showVRError('WebXR not supported in this browser');
         return;
     }
     
+    // Check if immersive-vr is supported
     navigator.xr.isSessionSupported('immersive-vr')
         .then(supported => {
-            console.log('VR Session supported:', supported);
             if (!supported) {
-                showDetailedVRError('Your browser reports that immersive-vr sessions are not supported');
+                showVRError('VR not supported on this device/browser');
                 return;
             }
             
-            // Request minimal features for better compatibility
+            // Create scene if it doesn't exist
+            if (!scene) {
+                console.log('Creating scene');
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x87CEEB);
+            }
+            
+            // Create renderer if it doesn't exist
+            if (!renderer) {
+                console.log('Creating renderer');
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(window.innerWidth, window.innerHeight);
+                document.getElementById('vr-experience').appendChild(renderer.domElement);
+            }
+            
+            // Make sure WebXR is enabled
+            renderer.xr.enabled = true;
+            
+            // Initialize the experience if needed
+            if (!vrInitialized) {
+                console.log('Initializing VR experience');
+                initVRExperience(false);
+                vrInitialized = true;
+            }
+            
+            // Request the VR session
+            console.log('Requesting VR session');
             return navigator.xr.requestSession('immersive-vr', {
-                optionalFeatures: ['local-floor'] 
+                optionalFeatures: ['local-floor']
             });
         })
         .then(session => {
-            console.log('VR session created successfully');
+            if (!session) return; // Handle case where previous then() didn't return a session
             
-            // Connect session to renderer
+            console.log('VR session created, connecting to renderer');
+            
             try {
+                // Connect session to renderer
                 renderer.xr.setSession(session);
-                console.log('Session connected to renderer');
                 
-                // ADD THIS LINE: Add vr-active class to body element
+                // Add vr-active class to body
                 document.body.classList.add('vr-active');
                 
-                // Hide website content, show VR experience
+                // Hide website, show VR experience
                 document.getElementById('website-content').style.display = 'none';
                 document.getElementById('vr-experience').style.display = 'block';
                 document.getElementById('vr-loading').style.display = 'none';
+                
+                console.log('VR session started successfully');
+                
+                // Start animation loop if not already running
+                if (!clock) clock = new THREE.Clock();
+                animate();
             } catch (err) {
-                showDetailedVRError('Error connecting session to renderer: ' + err.message);
+                showVRError('Error starting VR: ' + err.message);
             }
         })
         .catch(error => {
-            showDetailedVRError('Error requesting VR session: ' + error.message);
+            showVRError('VR session error: ' + error.message);
         });
 });
 
