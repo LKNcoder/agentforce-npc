@@ -2175,7 +2175,7 @@ function replaceModelWithPinkVersion() {
                         addSpontaneousSpeech();
                     }
                 }
-            }, 25000 + Math.random() * 20000);
+            }, 90000 + Math.random() * 20000);
         }
 
         function addSpontaneousSpeech() {
@@ -2184,15 +2184,8 @@ function replaceModelWithPinkVersion() {
             
             // Set of possible spontaneous phrases
             const phrases = [
-                "Welcome to our virtual store! Looking for anything specific?",
-                "Let me know if you need any help finding products.",
-                "We've got some great deals today! Want to hear about them?",
-                "Feel free to look around or ask me questions about our products.",
-                "Have you seen our newest items? They just arrived yesterday.",
-                "I'm here to help! Just ask if you have any questions.",
-                "Did you know we offer free shipping on orders over $50?",
-                "Thanks for visiting our virtual storefront today!",
-                "Our most popular item is on sale this week."
+                "If you have any questions, just ask.",
+                
             ];
             
             // Select a random phrase
@@ -2233,6 +2226,12 @@ function replaceModelWithPinkVersion() {
         function handleUserSpeech(text) {
     console.log('User said:', text);
     
+  // Don't allow new speech if already speaking
+  if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring new input");
+        return;
+    }
+
     // Show a loading indicator in the speech bubble
     showSpeechBubble('...');
     
@@ -2241,6 +2240,76 @@ function replaceModelWithPinkVersion() {
     
     // Check for product showcase requests
     const lowerText = text.toLowerCase();
+
+     // Check for "wood" keyword
+     if (lowerText.includes('wood')) {
+        npcSpeak("Our Adventure Tower model features premium pressure-treated wood that's resistant to weathering and insects. It's our most durable natural material option.");
+        // Point to the model1 if it exists in the scene
+        setTimeout(() => {
+            scene.traverse((object) => {
+                if (object.userData && object.userData.modelPath === 'model1.glb') {
+                    // Make NPC point to this model
+                    const npcPosition = new THREE.Vector3();
+                    npcAvatar.getWorldPosition(npcPosition);
+                    
+                    const modelPosition = new THREE.Vector3();
+                    object.getWorldPosition(modelPosition);
+                    
+                    const direction = new THREE.Vector3().subVectors(modelPosition, npcPosition);
+                    direction.y = 0; // Keep on xz plane for looking
+                    
+                    const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
+                    npcAvatar.lookAt(lookTarget);
+                    
+                    // Play pointing animation
+                    playAnimationByCategory('pointing');
+                    
+                    // Return to idle after pointing
+                    setTimeout(() => {
+                        if (!npcSpeaking) {
+                            playAnimationByCategory('idle');
+                        }
+                    }, 3000);
+                }
+            });
+        }, 1000);
+        return;
+    }
+    
+    // Check for "tic tac toe" keyword
+    if (lowerText.includes('tic tac toe') || lowerText.includes('tic-tac-toe')) {
+        npcSpeak("Our Toddler Zone model includes a built-in tic-tac-toe panel that's perfect for younger children. It encourages cognitive development through play.");
+        // Point to model3 if it exists in the scene
+        setTimeout(() => {
+            scene.traverse((object) => {
+                if (object.userData && (object.userData.modelPath === 'model3.glb' || object.userData.modelPath === 'model3-pink.glb')) {
+                    // Make NPC point to this model
+                    const npcPosition = new THREE.Vector3();
+                    npcAvatar.getWorldPosition(npcPosition);
+                    
+                    const modelPosition = new THREE.Vector3();
+                    object.getWorldPosition(modelPosition);
+                    
+                    const direction = new THREE.Vector3().subVectors(modelPosition, npcPosition);
+                    direction.y = 0; // Keep on xz plane for looking
+                    
+                    const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
+                    npcAvatar.lookAt(lookTarget);
+                    
+                    // Play pointing animation
+                    playAnimationByCategory('pointing');
+                    
+                    // Return to idle after pointing
+                    setTimeout(() => {
+                        if (!npcSpeaking) {
+                            playAnimationByCategory('idle');
+                        }
+                    }, 3000);
+                }
+            });
+        }, 1000);
+        return;
+    }
     
     // Check for pink color request
     if (lowerText.includes('pink') || lowerText.includes('color')) {
@@ -2325,6 +2394,11 @@ function replaceModelWithPinkVersion() {
     }
     
     npcSpeak(response);
+
+     // Set flag to wait for user input again after speaking
+     setTimeout(() => {
+        window.waitingForUserInput = true;
+    }, 1000);
 }
 
 
