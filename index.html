@@ -1584,22 +1584,22 @@ function createModelLabel(modelObject, name) {
     
     // Determine position based on model name
     let labelX = 0;
-    let labelY = 3.1; // Height above the model
+    let labelY = 4.0; // Height above the model
     let labelZ = 0;
     
     // Position based on model name 
     if (name === 'Adventure Tower') {
         // Model 1 - Position to the left of user
-        labelX = -6.0;
-        labelZ = 0;
+        labelX = -8.0;
+        labelZ = 1.0;
     } else if (name === 'Nature Explorer') {
         // Model 2 - Position straight ahead
         labelX = 0;
-        labelZ = -6.0;
+        labelZ = -8.0;
     } else if (name.includes('Toddler Zone')) {
         // Model 3 - Position to the right of user
-        labelX = 6.0;
-        labelZ = 0;
+        labelX = 8.0;
+        labelZ = -1.0;
     } else {
         // For other models, try to get position from the model
         const modelPos = new THREE.Vector3();
