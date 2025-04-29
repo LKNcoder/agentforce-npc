@@ -915,39 +915,60 @@
         document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
     
-    // Show loading screen with microphone permission message
+    // Show simple loading screen
     document.getElementById('vr-loading').style.display = 'flex';
     document.getElementById('vr-loading').innerHTML = `
-        <h2>Requesting Microphone Access</h2>
-        <p>Please grant microphone permission to enable voice interaction in VR.</p>
-        <p>The VR experience will start after permissions are granted.</p>
+        <h2>Preparing VR Experience</h2>
+        <p>Loading environment and requesting permissions...</p>
+        <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
     `;
     
-    // Request microphone permission first
-    requestMicrophonePermission()
-        .then(() => {
-            // Microphone permission granted, now initialize VR
-            document.getElementById('vr-loading').innerHTML = `
-                <h2>Loading VR Experience</h2>
-                <p>Our sales representative will assist you shortly...</p>
-            `;
+    // Initialize VR first
+    if (!vrInitialized) {
+        initVRExperience(false); // Initialize without audio first
+        vrInitialized = true;
+    }
+    
+    // Request both microphone and VR in sequence
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            // Got microphone permission, store stream
+            console.log('Microphone permission granted');
+            window.microphoneStream = stream;
             
-            initializeAndEnterVR();
+            // Setup audio with the approved stream
+            setupAudioCapture(stream);
+            
+            // Now request VR session
+            return navigator.xr.requestSession('immersive-vr', {
+                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
+            });
         })
         .catch(error => {
-            // Microphone permission denied or error occurred
-            console.warn('Microphone permission issue:', error);
-            document.getElementById('vr-loading').innerHTML = `
-                <h2>Microphone Access Limited</h2>
-                <p>Voice interaction will be disabled, but you can still experience VR.</p>
-                <p>Click "Continue to VR" to proceed.</p>
-                <button id="continue-to-vr" style="background: #4CAF50; color: white; border: none; padding: 12px 30px; margin-top: 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">Continue to VR</button>
-            `;
+            // Microphone access failed, continue without voice features
+            console.warn('Proceeding without microphone access:', error);
             
-            // Add event listener to the continue button
-            document.getElementById('continue-to-vr').addEventListener('click', function() {
-                initializeAndEnterVR(false); // false indicates no mic access
+            // Still request VR session
+            return navigator.xr.requestSession('immersive-vr', {
+                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
             });
+        })
+        .then(session => {
+            // VR session granted - proceed with VR setup
+            renderer.xr.setSession(session);
+            
+            // Hide website content, show VR experience
+            document.getElementById('website-content').style.display = 'none';
+            document.getElementById('vr-experience').style.display = 'block';
+            document.getElementById('vr-loading').style.display = 'none';
+            
+            console.log('VR session has started');
+        })
+        .catch(error => {
+            // VR session failed
+            console.error('Error starting VR session:', error);
+            document.getElementById('vr-loading').style.display = 'none';
+            showVRNotSupportedMessage();
         });
 });
 
@@ -2999,7 +3020,7 @@ function createModelLabel(modelObject, name) {
         teleportMarker.visible = false;
         return;
     }
-    
+
     if (isTeleporting && teleportMarker.visible) {
         // Teleport to the marked position
         cameraRig.position.x = teleportPoint.x;
@@ -3428,14 +3449,34 @@ function sayGoodbye() {
 
 
         // Handle VR session end
-        function handleVRSessionEnd() {
-            console.log('VR session ended');
-        }
-
-          // Stop ambient sounds when leaving VR
-        if (ambientSound) {
+    function handleVRSessionEnd() {
+    console.log('VR session ended');
+    
+    // Stop ambient sounds
+    if (ambientSound) {
         ambientSound.stop();
     }
+    
+    // Reset any VR-specific state
+    if (npcSpeaking) {
+        npcSpeaking = false;
+        stopLipSync();
+    }
+    
+    // Hide VR experience elements and show website content
+    document.getElementById('vr-experience').style.display = 'none';
+    document.getElementById('website-content').style.display = 'block';
+    
+    // Reset any pending timers
+    if (npcMovementTimeout) {
+        clearTimeout(npcMovementTimeout);
+    }
+    
+    // Return focus to the main window
+    window.focus();
+    
+    console.log('Successfully returned to main website');
+}
 
         // Window resize handler
         function onWindowResize() {
