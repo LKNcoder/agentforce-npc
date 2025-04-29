@@ -1036,7 +1036,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 1.02, -0.44);
+    exitButton.position.set(0, 1.02, -0.46);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1229,6 +1229,8 @@ function setupLoaders() {
     createExitButton();
     
     setupSpatialAudio();
+
+    setupAmbientSound();
     
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
         navigator.mediaDevices.getUserMedia({ audio: true })
