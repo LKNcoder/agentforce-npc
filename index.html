@@ -914,9 +914,44 @@
         document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
     
-    // Show loading screen
+    // Show loading screen with microphone permission message
     document.getElementById('vr-loading').style.display = 'flex';
+    document.getElementById('vr-loading').innerHTML = `
+        <h2>Requesting Microphone Access</h2>
+        <p>Please grant microphone permission to enable voice interaction in VR.</p>
+        <p>The VR experience will start after permissions are granted.</p>
+    `;
     
+    // Request microphone permission first
+    requestMicrophonePermission()
+        .then(() => {
+            // Microphone permission granted, now initialize VR
+            document.getElementById('vr-loading').innerHTML = `
+                <h2>Loading VR Experience</h2>
+                <p>Our sales representative will assist you shortly...</p>
+            `;
+            
+            initializeAndEnterVR();
+        })
+        .catch(error => {
+            // Microphone permission denied or error occurred
+            console.warn('Microphone permission issue:', error);
+            document.getElementById('vr-loading').innerHTML = `
+                <h2>Microphone Access Limited</h2>
+                <p>Voice interaction will be disabled, but you can still experience VR.</p>
+                <p>Click "Continue to VR" to proceed.</p>
+                <button id="continue-to-vr" style="background: #4CAF50; color: white; border: none; padding: 12px 30px; margin-top: 20px; border-radius: 4px; cursor: pointer; font-weight: bold;">Continue to VR</button>
+            `;
+            
+            // Add event listener to the continue button
+            document.getElementById('continue-to-vr').addEventListener('click', function() {
+                initializeAndEnterVR(false); // false indicates no mic access
+            });
+        });
+});
+
+// New function to initialize and enter VR after mic permission is handled
+function initializeAndEnterVR(withMicrophone = true) {
     // Check if WebXR is supported
     if ('xr' in navigator) {
         navigator.xr.isSessionSupported('immersive-vr')
@@ -924,7 +959,7 @@
                 if (supported) {
                     // Initialize VR experience if not already initialized
                     if (!vrInitialized) {
-                        initVRExperience();
+                        initVRExperience(withMicrophone);
                         vrInitialized = true;
                     }
                     
@@ -940,9 +975,7 @@
                         document.getElementById('vr-experience').style.display = 'block';
                         document.getElementById('vr-loading').style.display = 'none';
                         
-                        // Session has been successfully requested and started
                         console.log('VR session has started');
-                        
                     }).catch(error => {
                         console.error('Error starting VR session:', error);
                         document.getElementById('vr-loading').style.display = 'none';
@@ -955,7 +988,6 @@
                 }
             })
             .catch(error => {
-                // Error checking VR support
                 console.error('Error checking VR support:', error);
                 document.getElementById('vr-loading').style.display = 'none';
                 showVRNotSupportedMessage();
@@ -965,7 +997,7 @@
         document.getElementById('vr-loading').style.display = 'none';
         showVRNotSupportedMessage();
     }
-});
+}
 
 
 function createExitButton() {
@@ -981,7 +1013,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 1.01, -0.41);
+    exitButton.position.set(0, 1.01, -0.43);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1157,9 +1189,7 @@ function checkExitButtonIntersection() {
 
             setupAmbientSound();
             
-            setupAudioCapture();
-
-            startRecordingContinuous();
+              
             
             createTeleportMarker();
 
@@ -1169,6 +1199,13 @@ function checkExitButtonIntersection() {
             loadAvatarModels();
 
             loadPlaygroundModels();
+
+            if (withMicrophone && window.microphoneStream) {
+              setupAudioCapture(window.microphoneStream);
+          console.log('Audio capture initialized with pre-approved microphone stream');
+            } else {
+            console.log('Microphone access not available - voice features disabled');
+            }
             
             // Handle window resize
             window.addEventListener('resize', onWindowResize);
@@ -2802,15 +2839,35 @@ function createModelLabel(modelObject, name) {
 
 
         // Set up audio capture for voice recognition
-        function setupAudioCapture() {
-            // Initialize Web Audio API context
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            } catch (e) {
-                console.error('Web Audio API is not supported in this browser:', e);
-                alert('Audio is not fully supported in this browser. Some features may not work.');
-            }
+        function setupAudioCapture(existingStream = null) {
+    // Initialize Web Audio API context
+    try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // If we have an existing stream, set up analysis and recording
+        if (existingStream) {
+            // Setup audio analyzer for volume detection
+            const audioSource = audioContext.createMediaStreamSource(existingStream);
+            audioAnalyser = audioContext.createAnalyser();
+            audioAnalyser.fftSize = 256;
+            audioSource.connect(audioAnalyser);
+            
+            analyserData = new Uint8Array(audioAnalyser.frequencyBinCount);
+            
+            // Create media recorder
+            mediaRecorder = new MediaRecorder(existingStream);
+            audioChunks = [];
+            
+            // Set up event handlers and start recording
+            setupMediaRecorderEvents();
+            mediaRecorder.start(1000);
+            console.log('Started audio recording with provided stream');
         }
+    } catch (e) {
+        console.error('Web Audio API setup error:', e);
+        alert('Audio is not fully supported in this browser. Some features may not work.');
+    }
+}
 
         // Start continuous audio recording for speech detection
         function startRecordingContinuous() {
@@ -3443,9 +3500,9 @@ function sayGoodbye() {
                 });
 
                 // Check for exit button interaction in VR
-if (renderer.xr.isPresenting && window.exitButton) {
-    checkExitButtonIntersection();
-}
+            if (renderer.xr.isPresenting && window.exitButton) {
+            checkExitButtonIntersection();
+            }
 
                 // Update eye position to look at camera
                 if (npcAvatar && eyeMovementActive && !isBlinking) {
