@@ -978,6 +978,14 @@ body.vr-active #vr-experience {
         
         // Connect session to renderer
         renderer.xr.setSession(session);
+
+        renderer.domElement.style.position = 'absolute';
+    renderer.domElement.style.top = '0';
+    renderer.domElement.style.left = '0';
+    renderer.domElement.style.width = '100vw';
+    renderer.domElement.style.height = '100vh';
+    renderer.domElement.style.zIndex = '1000';
+    renderer.domElement.style.display = 'block';
         
         // Show VR experience, hide website
         document.body.classList.add('vr-active');
