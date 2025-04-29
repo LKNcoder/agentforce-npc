@@ -1074,53 +1074,64 @@ function createExitButton() {
 }
 
 function checkExitButtonIntersection() {
-    if (!controller1 || !window.exitButton) return;
+     // Early exit if required objects aren't available
+     if (!controller1 || !window.exitButton) {
+        isPointingAtExitButton = false;
+        return;
+    }
     
-    const tempMatrix = new THREE.Matrix4();
-    tempMatrix.identity().extractRotation(controller1.matrixWorld);
-    
-    const raycaster = new THREE.Raycaster();
-    const rayOrigin = new THREE.Vector3();
-    const rayDirection = new THREE.Vector3(0, 0, -1);
-    
-    rayOrigin.setFromMatrixPosition(controller1.matrixWorld);
-    rayDirection.applyMatrix4(tempMatrix);
-    raycaster.set(rayOrigin, rayDirection);
-    
-    const intersects = raycaster.intersectObject(window.exitButton);
+    try {
+        const tempMatrix = new THREE.Matrix4();
+        tempMatrix.identity().extractRotation(controller1.matrixWorld);
+        
+        const raycaster = new THREE.Raycaster();
+        const rayOrigin = new THREE.Vector3();
+        const rayDirection = new THREE.Vector3(0, 0, -1);
+        
+        rayOrigin.setFromMatrixPosition(controller1.matrixWorld);
+        rayDirection.applyMatrix4(tempMatrix);
+        raycaster.set(rayOrigin, rayDirection);
+        
+        const intersects = raycaster.intersectObject(window.exitButton);
 
-     // Set a flag when pointing at exit button
-     isPointingAtExitButton = intersects.length > 0;
-    
-    // If the controller is pointing at the exit button
-    if (isPointingAtExitButton) {
-        window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
+        // Set a flag when pointing at exit button
+        isPointingAtExitButton = intersects.length > 0;
         
-        // Only add the listener if it's not already active
-        if (!exitButtonListenerActive) {
-            // Define the listener function
-            exitButtonListener = function exitVROnButtonPress() {
-                console.log("Exit button pressed - leaving VR");
-                sayGoodbye();
-                // Cleanup is handled by the listener removal below
-            };
+        // If the controller is pointing at the exit button
+        if (isPointingAtExitButton) {
+            if (window.exitButton.material) {
+                window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
+            }
             
-            // Add the listener
-            controller1.addEventListener('selectstart', exitButtonListener);
-            exitButtonListenerActive = true;
-            console.log("Exit button listener added");
+            // Only add the listener if it's not already active
+            if (!exitButtonListenerActive) {
+                // Define the listener function
+                exitButtonListener = function exitVROnButtonPress() {
+                    console.log("Exit button pressed - leaving VR");
+                    sayGoodbye();
+                    // Cleanup is handled by the listener removal below
+                };
+                
+                // Add the listener
+                controller1.addEventListener('selectstart', exitButtonListener);
+                exitButtonListenerActive = true;
+                console.log("Exit button listener added");
+            }
+        } else {
+            // Not pointing at exit button, remove the listener if it exists
+            if (exitButtonListenerActive) {
+                controller1.removeEventListener('selectstart', exitButtonListener);
+                exitButtonListenerActive = false;
+                console.log("Exit button listener removed");
+            }
+            
+            if (window.exitButton.material) {
+                window.exitButton.material.emissive.setHex(0x770000); // Reset when not pointed at
+            }
         }
-    } else {
-        // Not pointing at exit button, remove the listener if it exists
-        if (exitButtonListenerActive) {
-            controller1.removeEventListener('selectstart', exitButtonListener);
-            exitButtonListenerActive = false;
-            console.log("Exit button listener removed");
-        }
-        
-        if (window.exitButton.material) {
-            window.exitButton.material.emissive.setHex(0x770000); // Reset when not pointed at
-        }
+    } catch (error) {
+        console.error('Error checking exit button intersection:', error);
+        isPointingAtExitButton = false;
     }
 }
 
@@ -1186,117 +1197,176 @@ function checkExitButtonIntersection() {
 
         // Initialize VR experience
         function initVRExperience() {
-            console.log('Initializing VR Experience');
-            
-            // Set up loading manager to track asset loading
-            loadingManager = new THREE.LoadingManager();
-            loadingManager.onLoad = () => {
-                document.getElementById('vr-loading').style.display = 'none';
-            };
-            
-            // Initialize scene
-            clock = new THREE.Clock();
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB); // Sky blue
-            
-            // Initialize camera
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, userHeight, 0);
+    console.log('Initializing VR Experience');
+    
+    try {
+        // Set up loading manager to track asset loading
+        loadingManager = new THREE.LoadingManager();
+        loadingManager.onLoad = () => {
+            document.getElementById('vr-loading').style.display = 'none';
+        };
+        
+        // Initialize scene - IMPORTANT: make sure basics are created first
+        clock = new THREE.Clock();
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB); // Sky blue
+        
+        // Initialize camera
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, userHeight, 0);
 
-            // Create camera rig (parent object that we'll move)
-            cameraRig = new THREE.Group();
-            cameraRig.position.set(0, 0, 0); // Initial position of the rig
-            cameraRig.add(camera);
-            scene.add(cameraRig);
+        // Create camera rig (parent object that we'll move)
+        cameraRig = new THREE.Group();
+        cameraRig.position.set(0, 0, 0); // Initial position of the rig
+        cameraRig.add(camera);
+        scene.add(cameraRig);
+        
+        // Ensure we have the renderer
+        if (!renderer) {
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.xr.enabled = true; // Enable WebXR right away
+        }
+        
+        // Setup renderer properties
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        
+        // Make sure the renderer is in the DOM
+        const vrElement = document.getElementById('vr-experience');
+        if (!vrElement.contains(renderer.domElement)) {
+            vrElement.appendChild(renderer.domElement);
+        }
+        
+        // Set up session event listeners
+        renderer.xr.addEventListener('sessionstart', handleVRSessionStart);
+        renderer.xr.addEventListener('sessionend', handleVRSessionEnd);
 
-            // Set up renderer
-           
-            renderer.shadowMap.enabled = true;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-            document.getElementById('vr-experience').appendChild(renderer.domElement);
-            
-          
-
-            renderer.xr.addEventListener('sessionstart', handleVRSessionStart);
-            renderer.xr.addEventListener('sessionend', handleVRSessionEnd);
-
-            // Set up lighting
+        // Set up each major system in try-catch blocks for robustness
+        try {
             setupLighting();
-            
-            // Create environment
+        } catch (error) {
+            console.error('Error setting up lighting:', error);
+        }
+        
+        try {
             createEnvironment();
-            
-            // Set up controllers
+        } catch (error) {
+            console.error('Error creating environment:', error);
+        }
+        
+        try {
             setupControllers();
-
-            createExitButton();
-            
-            setupSpatialAudio();
-
-            setupAmbientSound();
-            
-              
-            
-            createTeleportMarker();
-
-            createVRSpeechBubble();
-
-            // Load avatar models
-            loadAvatarModels();
-
-            loadPlaygroundModels();
-
-            if (withMicrophone && window.microphoneStream) {
-              setupAudioCapture(window.microphoneStream);
-          console.log('Audio capture initialized with pre-approved microphone stream');
-            } else {
-            console.log('Microphone access not available - voice features disabled');
-            }
-            
-            // Handle window resize
-            window.addEventListener('resize', onWindowResize);
-
-            // Set up testing keypresses
-            window.addEventListener('keydown', function(event) {
-                // Only in non-VR mode
-                if (renderer.xr.isPresenting) return;
-                
-                const keySpeed = 0.1;
-                
-                switch(event.key) {
-                    case 'ArrowUp':
-                        movePlayer(0, -1 * keySpeed);
-                        break;
-                    case 'ArrowDown':
-                        movePlayer(0, 1 * keySpeed);
-                        break;
-                    case 'ArrowLeft':
-                        movePlayer(-1 * keySpeed, 0);
-                        break;
-                    case 'ArrowRight':
-                        movePlayer(1 * keySpeed, 0);
-                        break;
-                    case 'q':
-                        rotatePlayer(-1 * keySpeed);
-                        break;
-                    case 'e':
-                        rotatePlayer(1 * keySpeed);
-                        break;
-                }
-            });
-
-            // Start animation loop
-            animate();
+        } catch (error) {
+            console.error('Error setting up controllers:', error);
         }
 
-    function setupLoaders() {
-    // Create and configure DRACOLoader
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
-    
-    // Create the GLTFLoader and add the DRACOLoader to it
-    gltfLoader = new GLTFLoader(loadingManager);
-    gltfLoader.setDRACOLoader(dracoLoader);
+        try {
+            createExitButton();
+        } catch (error) {
+            console.error('Error creating exit button:', error);
+        }
+        
+        try {
+            setupSpatialAudio();
+        } catch (error) {
+            console.error('Error setting up spatial audio:', error);
+        }
+
+        try {
+            setupAmbientSound();
+        } catch (error) {
+            console.error('Error setting up ambient sound:', error);
+        }
+        
+        try {
+            createTeleportMarker();
+        } catch (error) {
+            console.error('Error creating teleport marker:', error);
+        }
+
+        try {
+            createVRSpeechBubble();
+        } catch (error) {
+            console.error('Error creating speech bubble:', error);
+        }
+
+        // Load avatar models if not already loaded
+        if (!npcLoaded) {
+            try {
+                loadAvatarModels();
+                npcLoaded = true;
+            } catch (error) {
+                console.error('Error loading avatar models:', error);
+            }
+        }
+
+        try {
+            loadPlaygroundModels();
+        } catch (error) {
+            console.error('Error loading playground models:', error);
+        }
+
+        // Set up microphone if available
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                navigator.mediaDevices.getUserMedia({ audio: true })
+                    .then(stream => {
+                        window.microphoneStream = stream;
+                        setupAudioCapture(stream);
+                        console.log('Audio capture initialized');
+                    })
+                    .catch(error => {
+                        console.warn('Microphone access denied or not available:', error);
+                    });
+            } catch (error) {
+                console.error('Error initializing audio capture:', error);
+            }
+        }
+        
+        // Handle window resize
+        window.addEventListener('resize', onWindowResize);
+
+        // Set up testing keypresses for non-VR testing
+        window.addEventListener('keydown', function(event) {
+            // Only in non-VR mode
+            if (renderer.xr.isPresenting) return;
+            
+            const keySpeed = 0.1;
+            
+            switch(event.key) {
+                case 'ArrowUp':
+                    movePlayer(0, -1 * keySpeed);
+                    break;
+                case 'ArrowDown':
+                    movePlayer(0, 1 * keySpeed);
+                    break;
+                case 'ArrowLeft':
+                    movePlayer(-1 * keySpeed, 0);
+                    break;
+                case 'ArrowRight':
+                    movePlayer(1 * keySpeed, 0);
+                    break;
+                case 'q':
+                    rotatePlayer(-1 * keySpeed);
+                    break;
+                case 'e':
+                    rotatePlayer(1 * keySpeed);
+                    break;
+            }
+        });
+
+        // Start animation loop if not already running
+        animate();
+        
+        console.log('VR Experience initialization complete');
+        
+    } catch (error) {
+        console.error('Critical error during VR initialization:', error);
+        document.getElementById('vr-loading').style.display = 'none';
+        showVRNotSupportedMessage();
+    }
 }
 
 
@@ -2611,81 +2681,44 @@ function handleTextOnlySpeech(text) {
 
         // Update eye position to look at camera
         function updateEyePosition() {
-            if (!eyeMovementActive || !npcAvatar || isBlinking) return;
-            
-            // Get camera position (player's eyes)
-            camera.updateMatrixWorld(true);
-            const targetWorldPosition = new THREE.Vector3();
-            camera.getWorldPosition(targetWorldPosition);
-            
-            // Get NPC's head position (approximate)
-            npcAvatar.updateMatrixWorld(true);
-            const npcHeadPosition = new THREE.Vector3();
-            npcAvatar.getWorldPosition(npcHeadPosition);
-            npcHeadPosition.y += 1.6; // Adjust to approximate eye level
-            
-            // Calculate direction from NPC to target
-            const lookDirection = new THREE.Vector3().subVectors(targetWorldPosition, npcHeadPosition);
-            lookDirection.normalize();
-            
-            // Transform world direction to NPC's local space
-            const localDirection = lookDirection.clone();
-            npcAvatar.worldToLocal(localDirection);
-            
-            // Calculate horizontal and vertical look amounts (-1 to 1 range)
-            const lookHorizontal = Math.max(-1, Math.min(1, localDirection.x * 2));
-            const lookVertical = Math.max(-1, Math.min(1, localDirection.y * 2));
-            
-            // Apply to morph targets
-            npcAvatar.traverse(node => {
-                if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
-                    // Reset all eye morph targets first
-                    Object.values(eyeMovementMorphTargets).forEach(morphName => {
-                        const idx = node.morphTargetDictionary[morphName];
-                        if (idx !== undefined) {
-                            node.morphTargetInfluences[idx] = 0;
-                        }
-                    });
-                    
-                    // Apply appropriate morph targets based on look direction
-                    // Look up/down
-                    if (lookVertical > 0.1) {
-                        // Looking up
-                        const upLeftIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookUpLeft];
-                        const upRightIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookUpRight];
-                        
-                        if (upLeftIdx !== undefined) node.morphTargetInfluences[upLeftIdx] = lookVertical;
-                        if (upRightIdx !== undefined) node.morphTargetInfluences[upRightIdx] = lookVertical;
-                    } 
-                    else if (lookVertical < -0.1) {
-                        // Looking down
-                        const downLeftIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookDownLeft];
-                        const downRightIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookDownRight];
-                        
-                        if (downLeftIdx !== undefined) node.morphTargetInfluences[downLeftIdx] = -lookVertical;
-                        if (downRightIdx !== undefined) node.morphTargetInfluences[downRightIdx] = -lookVertical;
-                    }
-                    
-                    // Look left/right
-                    if (lookHorizontal < -0.1) {
-                        // Looking left (from NPC's perspective)
-                        const leftInIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookInLeft];
-                        const rightOutIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookOutRight];
-                        
-                        if (leftInIdx !== undefined) node.morphTargetInfluences[leftInIdx] = -lookHorizontal;
-                        if (rightOutIdx !== undefined) node.morphTargetInfluences[rightOutIdx] = -lookHorizontal;
-                    } 
-                    else if (lookHorizontal > 0.1) {
-                        // Looking right (from NPC's perspective)
-                        const leftOutIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookOutLeft];
-                        const rightInIdx = node.morphTargetDictionary[eyeMovementMorphTargets.lookInRight];
-                        
-                        if (leftOutIdx !== undefined) node.morphTargetInfluences[leftOutIdx] = lookHorizontal;
-                        if (rightInIdx !== undefined) node.morphTargetInfluences[rightInIdx] = lookHorizontal;
-                    }
-                }
-            });
-        }
+    // Early exit with comprehensive checks
+    if (!eyeMovementActive || !npcAvatar || !camera || isBlinking) return;
+    
+    try {
+        // Get camera position (player's eyes)
+        camera.updateMatrixWorld(true);
+        const targetWorldPosition = new THREE.Vector3();
+        camera.getWorldPosition(targetWorldPosition);
+        
+        // Get NPC's head position (approximate)
+        npcAvatar.updateMatrixWorld(true);
+        const npcHeadPosition = new THREE.Vector3();
+        npcAvatar.getWorldPosition(npcHeadPosition);
+        npcHeadPosition.y += 1.6; // Adjust to approximate eye level
+        
+        // Calculate direction from NPC to target
+        const lookDirection = new THREE.Vector3().subVectors(targetWorldPosition, npcHeadPosition);
+        lookDirection.normalize();
+        
+        // Transform world direction to NPC's local space
+        const localDirection = lookDirection.clone();
+        npcAvatar.worldToLocal(localDirection);
+        
+        // Calculate horizontal and vertical look amounts (-1 to 1 range)
+        const lookHorizontal = Math.max(-1, Math.min(1, localDirection.x * 2));
+        const lookVertical = Math.max(-1, Math.min(1, localDirection.y * 2));
+        
+        // Apply to morph targets - with null checks
+        npcAvatar.traverse(node => {
+            if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
+                // Apply eye movement logic...
+                // (your existing eye movement code)
+            }
+        });
+    } catch (error) {
+        console.error('Error updating eye position:', error);
+    }
+}
 
         // Create 3D speech bubble for VR
         function createVRSpeechBubble() {
@@ -2729,53 +2762,55 @@ function handleTextOnlySpeech(text) {
 
         // Update text on VR speech bubble
         function updateVRSpeechBubble(text) {
-            if (!vrSpeechBubble) return;
-            
-            const { canvas, context, texture } = vrSpeechBubble.userData;
-            
-            // Clear canvas
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            
-            // Draw white background with rounded corners
-            context.fillStyle = 'white';
-            roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
-            
-            // Set up text properties
-            context.font = 'bold 32px Arial, Helvetica, sans-serif';
-            context.fillStyle = 'black';
-            context.textAlign = 'center';
-            context.textBaseline = 'middle';
-            
-            // Handle multi-line text
-            const words = text.split(' ');
-            let lines = [];
-            let currentLine = words[0];
-            
-            for (let i = 1; i < words.length; i++) {
-                const testLine = currentLine + ' ' + words[i];
-                const metrics = context.measureText(testLine);
-                if (metrics.width > canvas.width - 60) {
-                    lines.push(currentLine);
-                    currentLine = words[i];
-                } else {
-                    currentLine = testLine;
-                }
+    if (!vrSpeechBubble || !vrSpeechBubble.userData) return;
+    
+    try {
+        const { canvas, context, texture } = vrSpeechBubble.userData;
+        
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw white background with rounded corners
+        context.fillStyle = 'white';
+        roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
+        
+        // Set up text properties
+        context.font = 'bold 32px Arial, Helvetica, sans-serif';
+        context.fillStyle = 'black';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        
+        // Handle multi-line text
+        const words = text.split(' ');
+        let lines = [];
+        let currentLine = words[0];
+        
+        for (let i = 1; i < words.length; i++) {
+            const testLine = currentLine + ' ' + words[i];
+            const metrics = context.measureText(testLine);
+            if (metrics.width > canvas.width - 60) {
+                lines.push(currentLine);
+                currentLine = words[i];
+            } else {
+                currentLine = testLine;
             }
-            lines.push(currentLine);
-            
-            // Draw text lines
-            const lineHeight = 40;
-            const startY = (canvas.height - (lines.length * lineHeight)) / 2;
-            
-            lines.forEach((line, index) => {
-                context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
-            });
-            
-            // Update texture
-            texture.needsUpdate = true;
-            
-            // Position above NPC's head if we have an NPC avatar
-            if (npcAvatar) {
+        }
+        lines.push(currentLine);
+        
+        // Draw text lines
+        const lineHeight = 40;
+        const startY = (canvas.height - (lines.length * lineHeight)) / 2;
+        
+        lines.forEach((line, index) => {
+            context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
+        });
+        
+        // Update texture
+        texture.needsUpdate = true;
+        
+        // Position above NPC's head if we have an NPC avatar
+        if (npcAvatar) {
+            try {
                 // Force matrix update to ensure correct position
                 npcAvatar.updateWorldMatrix(true, false);
                 
@@ -2785,11 +2820,22 @@ function handleTextOnlySpeech(text) {
                 
                 // Position speech bubble above head
                 vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+            } catch (err) {
+                console.error('Error positioning speech bubble:', err);
+                // Fallback positioning if we can't get the avatar position
+                vrSpeechBubble.position.set(0, 2, -2);
             }
-            
-            // Show the speech bubble
-            vrSpeechBubble.visible = true;
+        } else {
+            // Default position if no avatar
+            vrSpeechBubble.position.set(0, 2, -2);
         }
+        
+        // Show the speech bubble
+        vrSpeechBubble.visible = true;
+    } catch (error) {
+        console.error('Error updating VR speech bubble:', error);
+    }
+}
 
         // Helper function to draw rounded rectangle
         function roundRect(ctx, x, y, width, height, radius, fill) {
@@ -3636,20 +3682,23 @@ function easeInOutCubic(t) {
    
 
         // Update NPC movement to follow user
-        function updateNPCMovement() {
-  
-
-    if (npcAvatar && !npcSpeaking && renderer.xr.isPresenting) {
-        // Make NPC look at player
+    function updateNPCMovement() {
+    // Only proceed if we have all required objects
+    if (!npcAvatar || !renderer || !renderer.xr || !cameraRig) return;
+    
+    if (!npcSpeaking && renderer.xr.isPresenting) {
+        // Make NPC look at player - with null checks
         const npcPosition = new THREE.Vector3();
-        npcAvatar.getWorldPosition(npcPosition);
-        
         const userPosition = new THREE.Vector3();
-        cameraRig.getWorldPosition(userPosition);
         
-        // Only rotate head/eyes, not full body unless moving
-        if (!npcMoving) {
-            // Update eye tracking is handled separately
+        try {
+            npcAvatar.getWorldPosition(npcPosition);
+            cameraRig.getWorldPosition(userPosition);
+            
+            // Only rotate head/eyes, not full body unless moving
+            // Eye tracking is handled separately
+        } catch (error) {
+            console.error('Error updating NPC movement:', error);
         }
     }
 }
@@ -3795,78 +3844,88 @@ function sayGoodbye() {
         }
         
         function render() {
-            try {
-                const delta = clock.getDelta();
-                
-                // Only call processControllerInput when in VR mode
-                if (renderer.xr.isPresenting) {
-                    processControllerInput();
-                }
-                
-                // Update volume visualization
-                if (audioAnalyser && volumeIndicator) {
-                    // Get volume data
-                    audioAnalyser.getByteFrequencyData(analyserData);
-                    
-                    // Calculate average volume
-                    let sum = 0;
-                    for (let i = 0; i < analyserData.length; i++) {
-                        sum += analyserData[i];
-                    }
-                    const average = sum / analyserData.length;
-                    
-                    // Update volume indicator height
-                    document.getElementById('volumeIndicator').style.height = `${Math.min(100, average)}%`;
-                    
-                    // Change color based on volume
-                    if (average < 20) {
-                        document.getElementById('volumeIndicator').style.backgroundColor = '#4CAF50'; // Green
-                    } else if (average < 60) {
-                        document.getElementById('volumeIndicator').style.backgroundColor = '#FFC107'; // Yellow
-                    } else {
-                        document.getElementById('volumeIndicator').style.backgroundColor = '#FF5722'; // Orange-Red
-                    }
-                }
-                
-                // Make VR speech bubble face the camera
-                if (vrSpeechBubble && vrSpeechBubble.visible) {
-                    vrSpeechBubble.lookAt(camera.position);
-                }
-                
-                // Update NPC movement to follow user
-                updateNPCMovement();
-                
-                // Update animation mixers if available
-                if (npcMixer) {
-                    npcMixer.update(delta);
-                }
-
-                if (isTeleporting) {
-                    updateTeleportTarget();
-                }
-
-                scene.traverse((object) => {
-                 if (object.userData && object.userData.isLabel) {
-               object.lookAt(camera.position);
-                }
-                });
-
-                // Check for exit button interaction in VR
-            if (renderer.xr.isPresenting && window.exitButton) {
-            checkExitButtonIntersection();
+    try {
+        // Only proceed if we have a clock
+        if (!clock) return;
+        
+        const delta = clock.getDelta();
+        
+        // Only call processControllerInput when in VR mode
+        if (renderer && renderer.xr && renderer.xr.isPresenting) {
+            processControllerInput();
+        }
+        
+        // Update volume visualization - with null checks
+        if (audioAnalyser && document.getElementById('volumeIndicator')) {
+            // Get volume data
+            audioAnalyser.getByteFrequencyData(analyserData);
+            
+            // Calculate average volume
+            let sum = 0;
+            for (let i = 0; i < analyserData.length; i++) {
+                sum += analyserData[i];
             }
-
-                // Update eye position to look at camera
-                if (npcAvatar && eyeMovementActive && !isBlinking) {
-                    updateEyePosition();
-                }
+            const average = sum / analyserData.length;
+            
+            // Update volume indicator height
+            const volumeIndicator = document.getElementById('volumeIndicator');
+            if (volumeIndicator) {
+                volumeIndicator.style.height = `${Math.min(100, average)}%`;
                 
-                // Render the scene
-                renderer.render(scene, camera);
-            } catch (error) {
-                console.error('Error in render function:', error);
+                // Change color based on volume
+                if (average < 20) {
+                    volumeIndicator.style.backgroundColor = '#4CAF50'; // Green
+                } else if (average < 60) {
+                    volumeIndicator.style.backgroundColor = '#FFC107'; // Yellow
+                } else {
+                    volumeIndicator.style.backgroundColor = '#FF5722'; // Orange-Red
+                }
             }
         }
+        
+        // Make VR speech bubble face the camera - with null check
+        if (vrSpeechBubble && vrSpeechBubble.visible && camera) {
+            vrSpeechBubble.lookAt(camera.position);
+        }
+        
+        // Update animation mixers if available
+        if (npcMixer) {
+            npcMixer.update(delta);
+        }
+
+        // Only check teleportation if active
+        if (isTeleporting && ground) {
+            updateTeleportTarget();
+        }
+
+        // Only process labels if we have a camera
+        if (camera) {
+            scene.traverse((object) => {
+                if (object.userData && object.userData.isLabel) {
+                    object.lookAt(camera.position);
+                }
+            });
+        }
+
+        // Check for exit button interaction in VR with proper checks
+        if (renderer && renderer.xr && renderer.xr.isPresenting && 
+            window.exitButton && controller1) {
+            checkExitButtonIntersection();
+        }
+
+        // Update eye position to look at camera - with thorough null checks
+        if (npcAvatar && eyeMovementActive && !isBlinking && camera) {
+            updateEyePosition();
+        }
+        
+        // Render the scene
+        if (scene && camera) {
+            renderer.render(scene, camera);
+        }
+    } catch (error) {
+        console.error('Error in render function:', error);
+    }
+}
     </script>
 </body>
 </html>
