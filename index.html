@@ -911,65 +911,77 @@
             'H': 'viseme_kk'
         };
 
-        // Handle VR button click
-        document.getElementById('enter-vr-button').addEventListener('click', function(e) {
+    // Handle VR button click
+    document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
     
-    // Show simple loading screen
+    // Show explicit permission request screen
     document.getElementById('vr-loading').style.display = 'flex';
     document.getElementById('vr-loading').innerHTML = `
-        <h2>Preparing VR Experience</h2>
-        <p>Loading environment and requesting permissions...</p>
-        <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
+        <div style="text-align: center; padding: 20px;">
+            <h2>Microphone Access Required</h2>
+            <p>This VR experience needs microphone access to enable voice interaction.</p>
+            <button id="mic-permission-button" style="background: #4CAF50; color: white; padding: 12px 24px; 
+                     border-radius: 5px; border: none; margin: 20px 10px; cursor: pointer; font-weight: bold;">
+                Allow Microphone
+            </button>
+            <button id="skip-mic-button" style="background: #FF5722; color: white; padding: 12px 24px; 
+                     border-radius: 5px; border: none; margin: 20px 10px; cursor: pointer;">
+                Skip Voice Features
+            </button>
+        </div>
     `;
     
-    // Initialize VR first
-    if (!vrInitialized) {
-        initVRExperience(false); // Initialize without audio first
-        vrInitialized = true;
-    }
+    // Handle microphone permission button click
+    document.getElementById('mic-permission-button').addEventListener('click', function() {
+        // Request microphone permission directly after button click
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                console.log('Microphone permission granted');
+                window.microphoneStream = stream;
+                setupAudioCapture(stream);
+                
+                // Display loading message while VR initializes
+                document.getElementById('vr-loading').innerHTML = `
+                    <h2>Entering VR...</h2>
+                    <p>Preparing virtual environment</p>
+                    <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
+                          width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
+                `;
+                
+                // Use the existing function with microphone enabled
+                initializeAndEnterVR(true);
+            })
+            .catch(error => {
+                console.warn('Microphone access denied:', error);
+                
+                // Continue to VR without microphone
+                document.getElementById('vr-loading').innerHTML = `
+                    <h2>Entering VR...</h2>
+                    <p>Preparing virtual environment (no microphone)</p>
+                    <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
+                          width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
+                `;
+                
+                initializeAndEnterVR(false);
+            });
+    });
     
-    // Request both microphone and VR in sequence
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-            // Got microphone permission, store stream
-            console.log('Microphone permission granted');
-            window.microphoneStream = stream;
-            
-            // Setup audio with the approved stream
-            setupAudioCapture(stream);
-            
-            // Now request VR session
-            return navigator.xr.requestSession('immersive-vr', {
-                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
-            });
-        })
-        .catch(error => {
-            // Microphone access failed, continue without voice features
-            console.warn('Proceeding without microphone access:', error);
-            
-            // Still request VR session
-            return navigator.xr.requestSession('immersive-vr', {
-                optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
-            });
-        })
-        .then(session => {
-            // VR session granted - proceed with VR setup
-            renderer.xr.setSession(session);
-            
-            // Hide website content, show VR experience
-            document.getElementById('website-content').style.display = 'none';
-            document.getElementById('vr-experience').style.display = 'block';
-            document.getElementById('vr-loading').style.display = 'none';
-            
-            console.log('VR session has started');
-        })
-        .catch(error => {
-            // VR session failed
-            console.error('Error starting VR session:', error);
-            document.getElementById('vr-loading').style.display = 'none';
-            showVRNotSupportedMessage();
-        });
+    // Handle skip button click
+    document.getElementById('skip-mic-button').addEventListener('click', function() {
+        console.log('User chose to skip microphone access');
+        
+        // Display loading message
+        document.getElementById('vr-loading').innerHTML = `
+            <h2>Entering VR...</h2>
+            <p>Preparing virtual environment (voice features disabled)</p>
+            <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
+                  width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
+        `;
+        
+        // Use the existing function with microphone disabled
+        initializeAndEnterVR(false);
+    });
 });
 
 // New function to initialize and enter VR after mic permission is handled
@@ -1576,8 +1588,9 @@ function createModelLabel(modelObject, name) {
     // Position label above model in world space
     label.position.set(modelPos.x, modelPos.y + 2.5, modelPos.z);
     
-    // Mark as a label specifically
+    // Mark as a label specifically and store reference to model
     label.userData.isLabel = true;
+    label.userData.forModel = modelObject.uuid;
     
     // Add directly to scene (NOT to the model)
     scene.add(label);
@@ -1608,6 +1621,9 @@ function createModelLabel(modelObject, name) {
                 
                 const modelObject = gltf.scene;
                 
+                 // Store metadata to identify this model later
+                 modelObject.userData.modelPath = model.path;
+                modelObject.userData.name = model.name;
                                 
                 // Make sure all objects cast and receive shadows
                 modelObject.traverse((child) => {
@@ -1636,6 +1652,160 @@ function createModelLabel(modelObject, name) {
             }
         );
     });
+}
+
+
+// New function to replace model3.glb with model3-pink.glb
+function replaceModelWithPinkVersion() {
+    let originalModel = null;
+    let originalModelIndex = -1;
+    
+    // Find the original model3
+    scene.traverse((object) => {
+        if (object.userData && object.userData.modelPath === 'model3.glb') {
+            originalModel = object;
+        }
+    });
+    
+    // If we didn't find via userData, try finding in productModels
+    if (!originalModel) {
+        productModels.forEach((model, index) => {
+            // Check if this is the model we're looking for
+            if (model.userData && model.userData.name === 'Toddler Zone') {
+                originalModel = model;
+                originalModelIndex = index;
+            }
+        });
+    }
+    
+    if (!originalModel) {
+        console.error("Could not find the Toddler Zone model to replace");
+        npcSpeak("I'm sorry, I can't seem to find the model to change its color.");
+        return;
+    }
+    
+    // Remember position and rotation of original model
+    const originalPosition = originalModel.position.clone();
+    const originalRotation = originalModel.rotation.clone();
+    const originalScale = originalModel.scale.clone();
+    
+    // Remove original model labels
+    scene.traverse((object) => {
+        if (object.userData && object.userData.isLabel && 
+            object.userData.forModel === originalModel.uuid) {
+            scene.remove(object);
+        }
+    });
+    
+    // Remove the original model from the scene
+    scene.remove(originalModel);
+    
+    // If found in productModels, remove it
+    if (originalModelIndex >= 0) {
+        productModels.splice(originalModelIndex, 1);
+    }
+    
+    // Load the pink version
+    gltfLoader.load(
+        'model3-pink.glb',
+        (gltf) => {
+            console.log('Successfully loaded pink model');
+            
+            const pinkModel = gltf.scene;
+            
+            // Apply same position, rotation and scale as original
+            pinkModel.position.copy(originalPosition);
+            pinkModel.rotation.copy(originalRotation);
+            pinkModel.scale.copy(originalScale);
+            
+            // Store metadata to identify this model later
+            pinkModel.userData.modelPath = 'model3-pink.glb';
+            pinkModel.userData.name = 'Toddler Zone (Pink)';
+            
+            // Make sure all objects cast and receive shadows
+            pinkModel.traverse((child) => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            
+            // Create updated label
+            createModelLabel(pinkModel, 'Toddler Zone (Pink)');
+            
+            // Add label reference to model
+            scene.traverse((object) => {
+                if (object.userData && object.userData.isLabel && 
+                    !object.userData.forModel) {
+                    object.userData.forModel = pinkModel.uuid;
+                }
+            });
+            
+            // Add to scene
+            scene.add(pinkModel);
+            
+            // Store reference in product models array
+            productModels.push(pinkModel);
+            
+            // Make NPC point to the model
+            const npcPosition = new THREE.Vector3();
+            npcAvatar.getWorldPosition(npcPosition);
+            
+            const direction = new THREE.Vector3().subVectors(originalPosition, npcPosition);
+            direction.y = 0; // Keep on xz plane for looking
+            
+            const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
+            npcAvatar.lookAt(lookTarget);
+            
+            // Play pointing animation
+            playAnimationByCategory('pointing');
+            
+            // Return to idle after a delay
+            setTimeout(() => {
+                if (!npcSpeaking) {
+                    playAnimationByCategory('idle');
+                }
+            }, 3000);
+            
+            // Additional animation/effect for the color change
+            pinkModel.scale.set(0.8 * originalScale.x, 0.8 * originalScale.y, 0.8 * originalScale.z);
+            
+            // Animate scale to create a "pop" effect
+            const startTime = performance.now();
+            const duration = 1000; // 1 second animation
+            
+            function animateModelPop() {
+                const now = performance.now();
+                const elapsed = now - startTime;
+                const progress = Math.min(elapsed / duration, 1.0);
+                
+                // Use elastic easing for bouncy effect
+                const k = 0.5;
+                const elasticProgress = 1 - Math.pow(2, -10 * progress) * Math.sin((progress - k/4) * (2 * Math.PI) / k);
+                
+                pinkModel.scale.set(
+                    originalScale.x * (0.8 + 0.2 * elasticProgress),
+                    originalScale.y * (0.8 + 0.2 * elasticProgress),
+                    originalScale.z * (0.8 + 0.2 * elasticProgress)
+                );
+                
+                if (progress < 1.0) {
+                    requestAnimationFrame(animateModelPop);
+                } else {
+                    pinkModel.scale.copy(originalScale);
+                }
+            }
+            
+            animateModelPop();
+        },
+        (xhr) => {
+            console.log('Pink model loading progress:', (xhr.loaded / xhr.total * 100).toFixed(1) + '%');
+        },
+        (error) => {
+            console.error('Error loading pink model:', error);
+            npcSpeak("I'm sorry, I'm having trouble loading the pink version right now.");
+        }
+    );
 }
 
 
@@ -2125,6 +2295,13 @@ function createModelLabel(modelObject, name) {
                     return;
                 }
             }
+
+             // Check for pink color request
+              if (lowerText.includes('pink')) {
+             npcSpeak("Absolutely! Our playscapes come in dozens of colors. Let me show you the pink version!");
+             setTimeout(() => replaceModelWithPinkVersion(), 2000);
+                 return;
+             }
             
             // Simple response system
             let response = "";
