@@ -972,32 +972,43 @@ body.vr-active #vr-experience {
     
     console.log('Requesting VR session');
     navigator.xr.requestSession('immersive-vr', {
-        optionalFeatures: ['local-floor']
-    }).then(session => {
-        console.log('VR session obtained successfully');
-        
-        // Connect session to renderer
-        renderer.xr.setSession(session);
-
-        renderer.domElement.style.position = 'absolute';
+    optionalFeatures: ['local-floor']
+}).then(session => {
+    console.log('VR session obtained successfully');
+    
+    // Clear the DOM first
+    const vrElement = document.getElementById('vr-experience');
+    while (vrElement.firstChild) {
+        if (vrElement.firstChild !== renderer.domElement) {
+            vrElement.removeChild(vrElement.firstChild);
+        }
+    }
+    
+    // Add renderer canvas if needed
+    if (!renderer.domElement.parentElement) {
+        vrElement.appendChild(renderer.domElement);
+    }
+    
+    // Force canvas to be visible and full screen
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.position = 'fixed';
     renderer.domElement.style.top = '0';
     renderer.domElement.style.left = '0';
-    renderer.domElement.style.width = '100vw';
-    renderer.domElement.style.height = '100vh';
-    renderer.domElement.style.zIndex = '1000';
-    renderer.domElement.style.display = 'block';
-        
-        // Show VR experience, hide website
-        document.body.classList.add('vr-active');
-        document.getElementById('website-content').style.display = 'none';
-        document.getElementById('vr-loading').style.display = 'none';
-        
-        // Start animation
-        if (!clock) clock = new THREE.Clock();
-        animate();
-        
-        console.log('VR scene should now be visible');
-    }).catch(error => {
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.zIndex = '2000';
+    
+    // Connect session and hide other content
+    renderer.xr.setSession(session);
+    document.getElementById('website-content').style.display = 'none';
+    document.getElementById('vr-loading').style.display = 'none';
+    vrElement.style.display = 'block';
+    
+    if (!clock) clock = new THREE.Clock();
+    animate();
+    
+    console.log('VR scene should now be visible');
+}).catch(error => {
         console.error('Error entering VR:', error);
         document.getElementById('vr-loading').style.display = 'none';
         document.getElementById('vr-experience').style.display = 'none';
