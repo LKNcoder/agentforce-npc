@@ -914,88 +914,79 @@
     // Handle VR button click
     document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
-
-     // Make sure scene and renderer are initialized
-     if (!scene || !renderer) {
-        console.log('Initializing scene and renderer first');
-        scene = new THREE.Scene();
+    console.log('VR button clicked');
+    
+    // Show loading indicator
+    document.getElementById('vr-loading').style.display = 'flex';
+    document.getElementById('vr-loading').innerHTML = `
+        <h2>Entering VR Experience...</h2>
+        <p>Please wait while we initialize your headset</p>
+        <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
+              width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
+    `;
+    
+    // Simple initialization to ensure everything is created
+    if (!scene) scene = new THREE.Scene();
+    if (!renderer) {
+        console.log('Creating new renderer');
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.xr.enabled = true;
-        
-        // Add to DOM even if invisible, to ensure WebXR setup is complete
         document.getElementById('vr-experience').appendChild(renderer.domElement);
-        document.getElementById('vr-experience').style.display = 'none';
     }
     
-    // Show explicit permission request screen
-    document.getElementById('vr-loading').style.display = 'flex';
-    document.getElementById('vr-loading').innerHTML = `
-        <div style="text-align: center; padding: 20px;">
-            <h2>Microphone Access Required</h2>
-            <p>This VR experience needs microphone access to enable voice interaction.</p>
-            <button id="mic-permission-button" style="background: #4CAF50; color: white; padding: 12px 24px; 
-                     border-radius: 5px; border: none; margin: 20px 10px; cursor: pointer; font-weight: bold;">
-                Allow Microphone
-            </button>
-            <button id="skip-mic-button" style="background: #FF5722; color: white; padding: 12px 24px; 
-                     border-radius: 5px; border: none; margin: 20px 10px; cursor: pointer;">
-                Skip Voice Features
-            </button>
-        </div>
-    `;
+    // CRITICAL: Ensure WebXR is enabled
+    if (!renderer.xr.enabled) {
+        console.log('Enabling WebXR on renderer');
+        renderer.xr.enabled = true;
+    }
     
-    // Handle microphone permission button click
-    document.getElementById('mic-permission-button').addEventListener('click', function() {
-        // Request microphone permission directly after button click
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                console.log('Microphone permission granted');
-                window.microphoneStream = stream;
-                setupAudioCapture(stream);
-                
-                // Display loading message while VR initializes
-                document.getElementById('vr-loading').innerHTML = `
-                    <h2>Entering VR...</h2>
-                    <p>Preparing virtual environment</p>
-                    <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
-                          width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
-                `;
-                
-                // Use the existing function with microphone enabled
-                initializeAndEnterVR(true);
-            })
-            .catch(error => {
-                console.warn('Microphone access denied:', error);
-                
-                // Continue to VR without microphone
-                document.getElementById('vr-loading').innerHTML = `
-                    <h2>Entering VR...</h2>
-                    <p>Preparing virtual environment (no microphone)</p>
-                    <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
-                          width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
-                `;
-                
-                initializeAndEnterVR(false);
+    // Initialize VR experience if needed
+    if (!vrInitialized) {
+        console.log('Initializing VR Experience');
+        initVRExperience(false); // Skip microphone for now to simplify
+        vrInitialized = true;
+    }
+    
+    // Direct approach - request VR session
+    console.log('Requesting VR session directly');
+    if (!navigator.xr) {
+        showDetailedVRError('WebXR API not found in this browser');
+        return;
+    }
+    
+    navigator.xr.isSessionSupported('immersive-vr')
+        .then(supported => {
+            console.log('VR Session supported:', supported);
+            if (!supported) {
+                showDetailedVRError('Your browser reports that immersive-vr sessions are not supported');
+                return;
+            }
+            
+            // Request minimal features for better compatibility
+            return navigator.xr.requestSession('immersive-vr', {
+                optionalFeatures: ['local-floor'] 
             });
-    });
-    
-    // Handle skip button click
-    document.getElementById('skip-mic-button').addEventListener('click', function() {
-        console.log('User chose to skip microphone access');
-        
-        // Display loading message
-        document.getElementById('vr-loading').innerHTML = `
-            <h2>Entering VR...</h2>
-            <p>Preparing virtual environment (voice features disabled)</p>
-            <div style="border: 5px solid #f3f3f3; border-top: 5px solid #4CAF50; border-radius: 50%; 
-                  width: 50px; height: 50px; animation: spin 2s linear infinite; margin: 20px auto;"></div>
-        `;
-        
-        // Use the existing function with microphone disabled
-        initializeAndEnterVR(false);
-    });
+        })
+        .then(session => {
+            console.log('VR session created successfully');
+            
+            // Connect session to renderer
+            try {
+                renderer.xr.setSession(session);
+                console.log('Session connected to renderer');
+                
+                // Hide website content, show VR experience
+                document.getElementById('website-content').style.display = 'none';
+                document.getElementById('vr-experience').style.display = 'block';
+                document.getElementById('vr-loading').style.display = 'none';
+            } catch (err) {
+                showDetailedVRError('Error connecting session to renderer: ' + err.message);
+            }
+        })
+        .catch(error => {
+            showDetailedVRError('Error requesting VR session: ' + error.message);
+        });
 });
 
 // New function to initialize and enter VR after mic permission is handled
