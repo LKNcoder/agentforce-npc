@@ -883,6 +883,7 @@
         let exitButtonListenerActive = false;
         let exitButtonListener = null;
         let ambientSound;
+        let isPointingAtExitButton = false;
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -1041,9 +1042,12 @@ function checkExitButtonIntersection() {
     raycaster.set(rayOrigin, rayDirection);
     
     const intersects = raycaster.intersectObject(window.exitButton);
+
+     // Set a flag when pointing at exit button
+     isPointingAtExitButton = intersects.length > 0;
     
     // If the controller is pointing at the exit button
-    if (intersects.length > 0) {
+    if (isPointingAtExitButton) {
         window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
         
         // Only add the listener if it's not already active
@@ -2988,6 +2992,14 @@ function createModelLabel(modelObject, name) {
 
         // Teleport end handler
         function onTeleportEnd(event) {
+            // Don't teleport if pointing at the exit button
+    if (isPointingAtExitButton) {
+        console.log("Teleport canceled - pointing at exit button");
+        isTeleporting = false;
+        teleportMarker.visible = false;
+        return;
+    }
+    
     if (isTeleporting && teleportMarker.visible) {
         // Teleport to the marked position
         cameraRig.position.x = teleportPoint.x;
