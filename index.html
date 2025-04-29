@@ -1036,7 +1036,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 1.02, -0.46);
+    exitButton.position.set(0, 1.03, -0.48);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1070,38 +1070,57 @@ function checkExitButtonIntersection() {
         
         const intersects = raycaster.intersectObject(window.exitButton);
 
+        // Find the ray line object attached to controller
+        const rayLine = controller1.getObjectByName('right-ray');
+        
         // Set a flag when pointing at exit button
         isPointingAtExitButton = intersects.length > 0;
         
         // If the controller is pointing at the exit button
-        if (isPointingAtExitButton) {
+        if (isPointingAtExitButton && rayLine) {
+            // Adjust ray length to stop at intersection point
+            const distance = intersects[0].distance;
+            
+            // Update ray geometry to terminate at intersection
+            const newPoints = [
+                new THREE.Vector3(0, 0, 0),
+                new THREE.Vector3(0, 0, -1).multiplyScalar(distance)
+            ];
+            rayLine.geometry.setFromPoints(newPoints);
+            rayLine.geometry.attributes.position.needsUpdate = true;
+            
             if (window.exitButton.material) {
                 window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
             }
             
             // Only add the listener if it's not already active
             if (!exitButtonListenerActive) {
-                // Define the listener function
                 exitButtonListener = function exitVROnButtonPress() {
                     console.log("Exit button pressed - leaving VR");
                     sayGoodbye();
-                    // Cleanup is handled by the listener removal below
                 };
                 
-                // Add the listener
                 controller1.addEventListener('selectstart', exitButtonListener);
                 exitButtonListenerActive = true;
-                console.log("Exit button listener added");
             }
         } else {
-            // Not pointing at exit button, remove the listener if it exists
+            // Not pointing at exit button, restore default ray length
+            if (rayLine) {
+                const defaultPoints = [
+                    new THREE.Vector3(0, 0, 0),
+                    new THREE.Vector3(0, 0, -5)
+                ];
+                rayLine.geometry.setFromPoints(defaultPoints);
+                rayLine.geometry.attributes.position.needsUpdate = true;
+            }
+            
+            // Remove the listener if it exists
             if (exitButtonListenerActive) {
                 controller1.removeEventListener('selectstart', exitButtonListener);
                 exitButtonListenerActive = false;
-                console.log("Exit button listener removed");
             }
             
-            if (window.exitButton.material) {
+            if (window.exitButton && window.exitButton.material) {
                 window.exitButton.material.emissive.setHex(0x770000); // Reset when not pointed at
             }
         }
@@ -1553,12 +1572,35 @@ function createModelLabel(modelObject, name) {
     const labelGeometry = new THREE.PlaneGeometry(1.5, 0.4);
     const label = new THREE.Mesh(labelGeometry, labelMaterial);
     
-    // Get world position from the model for the label
-    const modelPos = new THREE.Vector3();
-    modelObject.getWorldPosition(modelPos);
+     // Determine position based on model name
+     let labelX = 0;
+    let labelY = 2.5; // Height above the model
+    let labelZ = 0;
     
-    // Position label above model in world space
-    label.position.set(modelPos.x, modelPos.y + 2.5, modelPos.z);
+    // Position based on model name
+    if (name === 'Adventure Tower') {
+        // Position to the left of user
+        labelX = -3.0;
+        labelZ = -2.0;
+    } else if (name === 'Nature Explorer') {
+        // Position straight ahead
+        labelX = 0;
+        labelZ = -4.0;
+    } else if (name === 'Toddler Zone' || name === 'Toddler Zone (Pink)') {
+        // Position to the right of user
+        labelX = 3.0;
+        labelZ = -2.0;
+    } else {
+        // For other models, try to get position from the model
+        const modelPos = new THREE.Vector3();
+        modelObject.getWorldPosition(modelPos);
+        labelX = modelPos.x;
+        labelY = modelPos.y + 2.5;
+        labelZ = modelPos.z;
+    }
+    
+    // Set the position
+    label.position.set(labelX, labelY, labelZ);
     
     // Mark as a label specifically and store reference to model
     label.userData.isLabel = true;
