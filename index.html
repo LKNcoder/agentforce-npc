@@ -1030,7 +1030,9 @@ function createExitButton() {
         color: 0xFF0000,  // Bright red
         emissive: 0x770000, // Red glow
         roughness: 0.3,
-        metalness: 0.8
+        metalness: 0.8,
+        transparent: false, // Make fully opaque
+        opacity: 1.0
     });
     
     const exitButton = new THREE.Mesh(geometry, material);
@@ -1050,8 +1052,8 @@ function createExitButton() {
 }
 
 function checkExitButtonIntersection() {
-     // Early exit if required objects aren't available
-     if (!controller1 || !window.exitButton) {
+    // Early exit if required objects aren't available
+    if (!controller1 || !window.exitButton) {
         isPointingAtExitButton = false;
         return;
     }
@@ -1081,13 +1083,15 @@ function checkExitButtonIntersection() {
             // Adjust ray length to stop at intersection point
             const distance = intersects[0].distance;
             
-            // Update ray geometry to terminate at intersection
+            // Create a new ray geometry that stops at the button
             const newPoints = [
                 new THREE.Vector3(0, 0, 0),
-                new THREE.Vector3(0, 0, -1).multiplyScalar(distance)
+                new THREE.Vector3(0, 0, -distance)
             ];
-            rayLine.geometry.setFromPoints(newPoints);
-            rayLine.geometry.attributes.position.needsUpdate = true;
+            
+            // Replace the entire geometry instead of just updating points
+            rayLine.geometry.dispose(); // Clean up old geometry
+            rayLine.geometry = new THREE.BufferGeometry().setFromPoints(newPoints);
             
             if (window.exitButton.material) {
                 window.exitButton.material.emissive.setHex(0xFF0000); // Highlight when pointed at
@@ -1106,12 +1110,12 @@ function checkExitButtonIntersection() {
         } else {
             // Not pointing at exit button, restore default ray length
             if (rayLine) {
-                const defaultPoints = [
+                // Replace with default ray geometry
+                rayLine.geometry.dispose(); // Clean up old geometry
+                rayLine.geometry = new THREE.BufferGeometry().setFromPoints([
                     new THREE.Vector3(0, 0, 0),
                     new THREE.Vector3(0, 0, -5)
-                ];
-                rayLine.geometry.setFromPoints(defaultPoints);
-                rayLine.geometry.attributes.position.needsUpdate = true;
+                ]);
             }
             
             // Remove the listener if it exists
@@ -1538,6 +1542,12 @@ function setupLighting() {
 
 // Helper function to create text labels for playgound models
 function createModelLabel(modelObject, name) {
+    // Skip label creation for sandbox and swingset models
+    if (name.includes("Sandbox") || name.includes("Swing")) {
+        console.log(`Skipping label creation for: ${name}`);
+        return;
+    }
+    
     // Create canvas for label
     const canvas = document.createElement('canvas');
     const context = canvas.getContext('2d');
@@ -1572,24 +1582,24 @@ function createModelLabel(modelObject, name) {
     const labelGeometry = new THREE.PlaneGeometry(1.5, 0.4);
     const label = new THREE.Mesh(labelGeometry, labelMaterial);
     
-     // Determine position based on model name
-     let labelX = 0;
-    let labelY = 2.5; // Height above the model
+    // Determine position based on model name
+    let labelX = 0;
+    let labelY = 3.1; // Height above the model
     let labelZ = 0;
     
-    // Position based on model name
+    // Position based on model name 
     if (name === 'Adventure Tower') {
-        // Position to the left of user
-        labelX = -3.0;
-        labelZ = -2.0;
+        // Model 1 - Position to the left of user
+        labelX = -6.0;
+        labelZ = 0;
     } else if (name === 'Nature Explorer') {
-        // Position straight ahead
+        // Model 2 - Position straight ahead
         labelX = 0;
-        labelZ = -4.0;
-    } else if (name === 'Toddler Zone' || name === 'Toddler Zone (Pink)') {
-        // Position to the right of user
-        labelX = 3.0;
-        labelZ = -2.0;
+        labelZ = -6.0;
+    } else if (name.includes('Toddler Zone')) {
+        // Model 3 - Position to the right of user
+        labelX = 6.0;
+        labelZ = 0;
     } else {
         // For other models, try to get position from the model
         const modelPos = new THREE.Vector3();
