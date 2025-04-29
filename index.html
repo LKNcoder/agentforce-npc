@@ -799,11 +799,8 @@ body.vr-active canvas {
         <div id="vr-ui">
             <button id="exitVrButton" class="vr-button">Exit VR</button>
             <button id="enterVrButton" class="vr-button">Enter VR Mode</button>
-            <button id="micButton" title="Press to speak">🎤</button>
-        </div>
-        <div id="volumeVisualization">
-            <div id="volumeIndicator"></div>
-        </div>
+                    </div>
+        
     </div>
 
     <script type="module">
@@ -993,53 +990,73 @@ body.vr-active canvas {
 
  
     // Function to initialize VR with or without mic
- function initVRWithMic() {
-        // Check if WebXR is supported
-        if ('xr' in navigator) {
-            navigator.xr.isSessionSupported('immersive-vr')
-                .then((supported) => {
-                    if (supported) {
-                        // Initialize VR experience if not already initialized
-                        if (!vrInitialized) {
-                            initVRExperience();
-                            vrInitialized = true;
+    function initVRWithMic() {
+    // Check if WebXR is supported
+    if ('xr' in navigator) {
+        navigator.xr.isSessionSupported('immersive-vr')
+            .then((supported) => {
+                if (supported) {
+                    // Use existing microphone stream if available
+                    if (window.microphoneStream) {
+                        console.log('Using existing microphone stream');
+                        // Set up audio context with existing stream
+                        if (!audioContext) {
+                            audioContext = new (window.AudioContext || window.webkitAudioContext)();
                         }
+                        startRecordingContinuous(window.microphoneStream);
                         
-                        // Request VR session
-                        navigator.xr.requestSession('immersive-vr', {
-                            optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
-                        }).then((session) => {
-                            renderer.xr.setSession(session);
-                            
-                            // Hide website content, show VR experience
-                            document.body.classList.add('vr-active');
-                            document.getElementById('website-content').style.display = 'none';
-                            document.getElementById('vr-experience').style.display = 'block';
-                            document.getElementById('vr-loading').style.display = 'none';
-                            
-                            console.log('VR session has started');
-                        }).catch(error => {
-                            console.error('Error starting VR session:', error);
-                            document.getElementById('vr-loading').style.display = 'none';
-                            showVRNotSupportedMessage();
-                        });
-                    } else {
-                        // WebXR is supported but immersive-vr is not
+                        // Auto-start speech recognition if available
+                        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                            if (recognition) {
+                                try {
+                                    recognition.start();
+                                    isListening = true;
+                                    console.log('Speech recognition automatically started');
+                                } catch (error) {
+                                    console.error('Error auto-starting speech recognition:', error);
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Initialize VR experience if not already initialized
+                    if (!vrInitialized) {
+                        initVRExperience();
+                        vrInitialized = true;
+                        
+                        
+                    }
+                    
+                    // Request VR session
+                    navigator.xr.requestSession('immersive-vr', {
+                        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
+                    }).then((session) => {
+                        renderer.xr.setSession(session);
+                        
+                        // Hide website content, show VR experience
+                        document.body.classList.add('vr-active');
+                        document.getElementById('website-content').style.display = 'none';
+                        document.getElementById('vr-experience').style.display = 'block';
+                        document.getElementById('vr-loading').style.display = 'none';
+                        
+                        console.log('VR session has started');
+                    }).catch(error => {
+                        console.error('Error starting VR session:', error);
                         document.getElementById('vr-loading').style.display = 'none';
                         showVRNotSupportedMessage();
-                    }
-                })
-                .catch(error => {
-                    console.error('Error checking VR support:', error);
+                    });
+                } else {
+                    // WebXR is supported but immersive-vr is not
                     document.getElementById('vr-loading').style.display = 'none';
                     showVRNotSupportedMessage();
-                });
-        } else {
-            // WebXR is not supported at all
-            document.getElementById('vr-loading').style.display = 'none';
-            showVRNotSupportedMessage();
-        }
+                }
+            });
+    } else {
+        // WebXR is not supported at all
+        document.getElementById('vr-loading').style.display = 'none';
+        showVRNotSupportedMessage();
     }
+}
 
 
 
@@ -2274,28 +2291,62 @@ function replaceModelWithPinkVersion() {
 
         // Set up speech recognition
         function setupSpeechRecognition() {
-            // Set up Web Speech API if available
-            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-                recognition.continuous = false;
-                recognition.interimResults = false;
-                recognition.lang = 'en-US';
-                
-                recognition.onresult = function(event) {
-                    const transcript = event.results[0][0].transcript;
-                    handleUserSpeech(transcript);
-                };
-                
-                recognition.onerror = function(event) {
-                    console.error('Speech recognition error:', event.error);
-                    isListening = false;
-                    document.getElementById('micButton').classList.remove('listening');
-                };
-            } else {
-                console.warn('Speech recognition not supported in this browser');
-                alert('Speech recognition is not supported in your browser. Please use Chrome or Edge.');
+    // Set up Web Speech API if available
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.continuous = true; // Make it continuous
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        recognition.onresult = function(event) {
+            // Get the last result
+            const lastResultIndex = event.results.length - 1;
+            const transcript = event.results[lastResultIndex][0].transcript;
+            handleUserSpeech(transcript);
+        };
+        
+        recognition.onend = function() {
+            // Auto restart if it ends
+            console.log('Speech recognition ended, restarting...');
+            try {
+                recognition.start();
+                isListening = true;
+            } catch (e) {
+                console.warn('Could not restart speech recognition:', e);
+            }
+        };
+        
+        recognition.onerror = function(event) {
+            console.error('Speech recognition error:', event.error);
+            isListening = false;
+            
+            // Try to restart after a brief delay
+            setTimeout(() => {
+                try {
+                    recognition.start();
+                    isListening = true;
+                } catch (e) {
+                    console.warn('Could not restart speech recognition after error:', e);
+                }
+            }, 2000);
+        };
+        
+        // Auto-start in VR
+        if (renderer && renderer.xr && renderer.xr.isPresenting) {
+            try {
+                recognition.start();
+                isListening = true;
+                console.log('Speech recognition auto-started in VR');
+            } catch (e) {
+                console.warn('Could not auto-start speech recognition:', e);
             }
         }
+    } else {
+        console.warn('Speech recognition not supported in this browser');
+        // Use non-blocking notification instead of alert
+        showTemporaryNotification('Speech recognition not supported in your browser. Voice interactions will be limited.');
+    }
+}
 
         // Handle user speech
     function handleUserSpeech(text) {
@@ -3260,80 +3311,93 @@ function handleTextOnlySpeech(text) {
 
 
 
-        // Set up audio capture for voice recognition
-        function setupAudioCapture(existingStream = null) {
-    // Initialize Web Audio API context
-    try {
-        audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        
-        // If we have an existing stream, set up analysis and recording
-        if (existingStream) {
+
+
+
+
+
+        // Start continuous audio recording for speech detection
+        function startRecordingContinuous() {
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+            console.log('Microphone access granted, starting continuous listening');
+            
+            // Create audio context if it doesn't exist yet
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // Create media recorder
+            mediaRecorder = new MediaRecorder(stream);
+            audioChunks = [];
+            
             // Setup audio analyzer for volume detection
-            const audioSource = audioContext.createMediaStreamSource(existingStream);
+            const audioSource = audioContext.createMediaStreamSource(stream);
             audioAnalyser = audioContext.createAnalyser();
             audioAnalyser.fftSize = 256;
             audioSource.connect(audioAnalyser);
             
             analyserData = new Uint8Array(audioAnalyser.frequencyBinCount);
             
-            // Create media recorder
-            mediaRecorder = new MediaRecorder(existingStream);
-            audioChunks = [];
+            // Handle data available event
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunks.push(event.data);
+                    
+                    // Process chunks periodically to detect speech
+                    if (audioChunks.length > 5) { 
+                        processAudioChunks();
+                    }
+                }
+            };
             
-            // Set up event handlers and start recording
-            setupMediaRecorderEvents();
-            mediaRecorder.start(1000);
-            console.log('Started audio recording with provided stream');
-        }
-    } catch (e) {
-        console.error('Web Audio API setup error:', e);
-        alert('Audio is not fully supported in this browser. Some features may not work.');
-    }
+            mediaRecorder.onstop = () => {
+                console.log('Recording stopped unexpectedly, restarting...');
+                setTimeout(() => {
+                    if (mediaRecorder && mediaRecorder.state === 'inactive') {
+                        try {
+                            mediaRecorder.start(1000); // 1-second chunks
+                        } catch (e) {
+                            console.warn('Failed to restart media recorder:', e);
+                        }
+                    }
+                }, 1000);
+            };
+            
+            // Start recording
+            mediaRecorder.start(1000); // 1-second chunks
+        })
+        .catch(err => {
+            console.warn('Error accessing microphone:', err);
+            // Replace alert with non-blocking notification
+            showTemporaryNotification('Could not access your microphone. VR chat functionality will be limited.');
+        });
 }
 
-        // Start continuous audio recording for speech detection
-        function startRecordingContinuous() {
-            navigator.mediaDevices.getUserMedia({ audio: true })
-                .then(stream => {
-                    console.log('Microphone access granted, starting continuous listening');
-                    
-                    // Create media recorder
-                    mediaRecorder = new MediaRecorder(stream);
-                    audioChunks = [];
-                    
-                    // Setup audio analyzer for volume detection
-                    const audioSource = audioContext.createMediaStreamSource(stream);
-                    audioAnalyser = audioContext.createAnalyser();
-                    audioAnalyser.fftSize = 256;
-                    audioSource.connect(audioAnalyser);
-                    
-                    analyserData = new Uint8Array(audioAnalyser.frequencyBinCount);
-                    
-                    // Handle data available event
-                    mediaRecorder.ondataavailable = (event) => {
-                        if (event.data.size > 0) {
-                            audioChunks.push(event.data);
-                            
-                            // Process chunks periodically to detect speech
-                            if (audioChunks.length > 5) { 
-                                processAudioChunks();
-                            }
-                        }
-                    };
-                    
-                    mediaRecorder.onstop = () => {
-                        console.log('Recording stopped unexpectedly, restarting...');
-                        stream.getTracks().forEach(track => track.stop());
-                        setTimeout(() => startRecordingContinuous(), 1000);
-                    };
-                    
-                    mediaRecorder.start(1000); // 1-second chunks
-                })
-                .catch(err => {
-                    console.error('Error accessing microphone:', err);
-                    alert('Could not access your microphone. VR chat functionality will be limited.');
-                });
+
+// Add this helper function for non-blocking notifications
+function showTemporaryNotification(message) {
+    const notification = document.createElement('div');
+    notification.style.position = 'fixed';
+    notification.style.bottom = '20px';
+    notification.style.left = '50%';
+    notification.style.transform = 'translateX(-50%)';
+    notification.style.background = 'rgba(0,0,0,0.7)';
+    notification.style.color = 'white';
+    notification.style.padding = '10px 20px';
+    notification.style.borderRadius = '5px';
+    notification.style.zIndex = '10000';
+    notification.textContent = message;
+    
+    document.body.appendChild(notification);
+    
+    // Remove after a few seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.parentNode.removeChild(notification);
         }
+    }, 5000);
+}
 
         // Process audio chunks for speech detection
         function processAudioChunks() {
@@ -3343,26 +3407,7 @@ function handleTextOnlySpeech(text) {
             // Reset chunks for next processing
             audioChunks = [];
             
-            // Mic button functionality
-            document.getElementById('micButton').addEventListener('click', function() {
-                if (recognition) {
-                    if (isListening) {
-                        recognition.stop();
-                        isListening = false;
-                        this.classList.remove('listening');
-                        document.getElementById('volumeVisualization').style.display = 'none';
-                    } else {
-                        try {
-                            recognition.start();
-                            isListening = true;
-                            this.classList.add('listening');
-                            document.getElementById('volumeVisualization').style.display = 'flex';
-                        } catch (error) {
-                            console.error('Speech recognition error:', error);
-                        }
-                    }
-                }
-            });
+          
         }
 
         // Create mute toggle button
@@ -3756,7 +3801,7 @@ function easeInOutCubic(t) {
 }
 
         // Handle VR session start
-    function handleVRSessionStart() {
+        function handleVRSessionStart() {
     console.log('VR session started');
 
     // Initialize audio context immediately after user interaction
@@ -3766,14 +3811,27 @@ function easeInOutCubic(t) {
         });
     }
 
-       // Start ambient sound if loaded
-       if (ambientSound && ambientSound.buffer) {
+    // Start ambient sound if loaded
+    if (ambientSound && ambientSound.buffer) {
         ambientSound.play();
         console.log('Ambient bird sounds started');
     }
     
+    // Make sure speech recognition is running
+    if (recognition && !isListening) {
+        try {
+            recognition.start();
+            isListening = true;
+            console.log('Speech recognition started in VR session');
+        } catch (e) {
+            console.warn('Could not start speech recognition in VR session:', e);
+        }
+    }
+    
+    // Rest of your existing code...
+    
+    // Place NPC a comfortable distance in front of the user
     if (npcAvatar) {
-        // Place NPC a comfortable distance in front of the user
         npcAvatar.position.set(0, 0, -2.2);
         
         // Make NPC face the user
@@ -3799,10 +3857,9 @@ function easeInOutCubic(t) {
             playAudioFile("hello-welcome-to-our-virtual-s.mp3")
                 .then(() => {
                     console.log("Welcome audio played successfully");
-                // Set waitingForUserInput flag AFTER welcome completes
-                window.waitingForUserInput = true;
-                
-            })
+                    // Set waitingForUserInput flag AFTER welcome completes
+                    window.waitingForUserInput = true;
+                })
                 .catch(err => {
                     console.error("Failed to play welcome audio:", err);
                     // Fallback to TTS if audio file fails
