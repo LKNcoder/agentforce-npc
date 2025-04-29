@@ -882,6 +882,7 @@
         let npcMovementCooldown = false;
         let exitButtonListenerActive = false;
         let exitButtonListener = null;
+        let ambientSound;
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -1153,6 +1154,8 @@ function checkExitButtonIntersection() {
             createExitButton();
             
             setupSpatialAudio();
+
+            setupAmbientSound();
             
             setupAudioCapture();
 
@@ -1465,7 +1468,7 @@ function setupLighting() {
         }
 
 
-
+  
 
 
 // Helper function to create text labels for playgound models
@@ -2665,6 +2668,35 @@ function createModelLabel(modelObject, name) {
             }
         }
 
+        function setupAmbientSound() {
+    if (!audioListener) {
+        console.warn('Audio listener not initialized, deferring ambient sound setup');
+        return;
+    }
+    
+    // Create a non-positional audio source for ambient sound
+    ambientSound = new THREE.Audio(audioListener);
+    
+    // Load the bird sounds
+    const audioLoader = new THREE.AudioLoader();
+    audioLoader.load('audio-cache/birds.mp3', function(buffer) {
+        ambientSound.setBuffer(buffer);
+        ambientSound.setLoop(true);
+        ambientSound.setVolume(0.5); // Adjust volume as needed (0.5 = 50%)
+        
+        // Don't autoplay - we'll start it when VR session begins
+        console.log('Ambient bird sounds loaded successfully');
+    }, 
+    // Progress callback
+    function(xhr) {
+        console.log('Ambient sound loading: ' + (xhr.loaded / xhr.total * 100).toFixed(1) + '%');
+    },
+    // Error callback
+    function(error) {
+        console.error('Error loading ambient sound:', error);
+    });
+}
+
 
         function playAudioFile(filename) {
     // Don't allow audio playback if already speaking
@@ -3247,6 +3279,12 @@ function easeInOutCubic(t) {
             console.log('AudioContext resumed successfully');
         });
     }
+
+       // Start ambient sound if loaded
+       if (ambientSound && ambientSound.buffer) {
+        ambientSound.play();
+        console.log('Ambient bird sounds started');
+    }
     
     if (npcAvatar) {
         // Place NPC a comfortable distance in front of the user
@@ -3324,6 +3362,11 @@ function sayGoodbye() {
         function handleVRSessionEnd() {
             console.log('VR session ended');
         }
+
+          // Stop ambient sounds when leaving VR
+        if (ambientSound) {
+        ambientSound.stop();
+    }
 
         // Window resize handler
         function onWindowResize() {
