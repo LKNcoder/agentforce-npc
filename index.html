@@ -950,36 +950,72 @@ body.vr-active canvas {
     `;
     loadingEl.style.display = 'flex';
     
-    // First explicitly request microphone permission - THIS IS THE CRITICAL PART
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-        navigator.mediaDevices.getUserMedia({ audio: true })
-            .then(stream => {
-                console.log('Microphone permission granted!');
-                window.microphoneStream = stream; // Store globally
-                
-                // Initialize speech recognition now that we have permission
-                if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                    setupSpeechRecognition();
+    // CRITICAL CHANGE: Initialize VR first, then request mic separately
+    // This ensures the scene starts rendering regardless of mic permission
+    if ('xr' in navigator) {
+        navigator.xr.isSessionSupported('immersive-vr')
+            .then((supported) => {
+                if (supported) {
+                    // Initialize VR without waiting for microphone
+                    if (!vrInitialized) {
+                        initVRExperience();
+                        vrInitialized = true;
+                    }
+                    
+                    // Request VR session
+                    navigator.xr.requestSession('immersive-vr', {
+                        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
+                    }).then((session) => {
+                        renderer.xr.setSession(session);
+                        
+                        // Hide website content, show VR experience
+                        document.body.classList.add('vr-active');
+                        document.getElementById('website-content').style.display = 'none';
+                        document.getElementById('vr-experience').style.display = 'block';
+                        document.getElementById('vr-loading').style.display = 'none';
+                        
+                        console.log('VR session has started');
+                        
+                        // AFTER VR is running, try to request microphone permission
+                        // This prevents blocking the visual rendering
+                        setTimeout(() => {
+                            if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+                                navigator.mediaDevices.getUserMedia({ audio: true })
+                                    .then(stream => {
+                                        console.log('Microphone permission granted!');
+                                        window.microphoneStream = stream;
+                                        
+                                        // Set up speech recognition now that we have permission
+                                        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                                            setupSpeechRecognition();
+                                        }
+                                        
+                                        // Setup continuous recording with the stream
+                                        if (window.microphoneStream) {
+                                            setupAudioCapture(window.microphoneStream);
+                                        }
+                                    })
+                                    .catch(error => {
+                                        console.warn('Microphone permission denied:', error);
+                                        showTemporaryNotification('Voice features disabled. You can still interact with controllers.');
+                                    });
+                            }
+                        }, 2000); // Wait 2 seconds after VR starts before requesting mic
+                    }).catch(error => {
+                        console.error('Error starting VR session:', error);
+                        document.getElementById('vr-loading').style.display = 'none';
+                        showVRNotSupportedMessage();
+                    });
+                } else {
+                    // WebXR is supported but immersive-vr is not
+                    document.getElementById('vr-loading').style.display = 'none';
+                    showVRNotSupportedMessage();
                 }
-                
-                // Now initialize VR with the granted microphone access
-                initVRWithMic();
-            })
-            .catch(error => {
-                console.warn('Microphone permission denied:', error);
-                // Show skip option
-                loadingEl.innerHTML = `
-                    <h2>Microphone Access Denied</h2>
-                    <p>VR experience will continue without voice interaction.</p>
-                    <button id="continue-without-mic" style="padding: 12px 20px; background: #FF5722; color: white; border: none; border-radius: 5px; margin-top: 20px; cursor: pointer;">Continue Anyway</button>
-                `;
-                document.getElementById('continue-without-mic').addEventListener('click', () => {
-                    initVRWithMic();
-                });
             });
     } else {
-        // Browser doesn't support getUserMedia
-        initVRWithMic();
+        // WebXR is not supported at all
+        document.getElementById('vr-loading').style.display = 'none';
+        showVRNotSupportedMessage();
     }
 });
     
