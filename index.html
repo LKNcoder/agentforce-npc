@@ -945,55 +945,81 @@ body.vr-active canvas {
     console.log('Enter VR button clicked');
     
     // Show loading screen
-    document.getElementById('vr-loading').style.display = 'flex';
+    const loadingEl = document.getElementById('vr-loading');
+    loadingEl.innerHTML = `
+        <h2>Loading VR Experience</h2>
+        <p>Please allow microphone access when prompted.</p>
+        <div style="margin-top: 15px;">
+            <img src="mic-icon.png" alt="Microphone" style="width: 40px; height: 40px; opacity: 0.8;">
+        </div>
+    `;
+    loadingEl.style.display = 'flex';
     
-    // Check if WebXR is supported
-    if ('xr' in navigator) {
-        navigator.xr.isSessionSupported('immersive-vr')
-            .then((supported) => {
-                if (supported) {
-                    // Initialize VR experience if not already initialized
-                    if (!vrInitialized) {
-                        initVRExperience();
-                        vrInitialized = true;
-                    }
-                    
-                    // Request VR session
-                    navigator.xr.requestSession('immersive-vr', {
-                        optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
-                    }).then((session) => {
-                        renderer.xr.setSession(session);
-                        
-                        // Hide website content, show VR experience
-                        document.body.classList.add('vr-active');
-                        document.getElementById('website-content').style.display = 'none';
-                        document.getElementById('vr-experience').style.display = 'block';
-                        document.getElementById('vr-loading').style.display = 'none';
-                        
-                        console.log('VR session has started');
-                    }).catch(error => {
-                        console.error('Error starting VR session:', error);
-                        document.getElementById('vr-loading').style.display = 'none';
-                        showVRNotSupportedMessage();
-                    });
-                } else {
-                    // WebXR is supported but immersive-vr is not
-                    document.getElementById('vr-loading').style.display = 'none';
-                    showVRNotSupportedMessage();
-                }
+    // Request microphone access first - while we have user interaction
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(stream => {
+                console.log('Microphone access granted');
+                window.microphoneStream = stream; // Store globally for later use
+                initVRWithMic();
             })
             .catch(error => {
-                console.error('Error checking VR support:', error);
-                document.getElementById('vr-loading').style.display = 'none';
-                showVRNotSupportedMessage();
+                console.warn('Microphone access denied:', error);
+                initVRWithMic(); // Continue without mic
             });
     } else {
-        // WebXR is not supported at all
-        document.getElementById('vr-loading').style.display = 'none';
-        showVRNotSupportedMessage();
+        initVRWithMic(); // Browser doesn't support getUserMedia
+    }
+ 
+    // Function to initialize VR with or without mic
+ function initVRWithMic() {
+        // Check if WebXR is supported
+        if ('xr' in navigator) {
+            navigator.xr.isSessionSupported('immersive-vr')
+                .then((supported) => {
+                    if (supported) {
+                        // Initialize VR experience if not already initialized
+                        if (!vrInitialized) {
+                            initVRExperience();
+                            vrInitialized = true;
+                        }
+                        
+                        // Request VR session
+                        navigator.xr.requestSession('immersive-vr', {
+                            optionalFeatures: ['local-floor', 'bounded-floor', 'hand-tracking', 'gamepad']
+                        }).then((session) => {
+                            renderer.xr.setSession(session);
+                            
+                            // Hide website content, show VR experience
+                            document.body.classList.add('vr-active');
+                            document.getElementById('website-content').style.display = 'none';
+                            document.getElementById('vr-experience').style.display = 'block';
+                            document.getElementById('vr-loading').style.display = 'none';
+                            
+                            console.log('VR session has started');
+                        }).catch(error => {
+                            console.error('Error starting VR session:', error);
+                            document.getElementById('vr-loading').style.display = 'none';
+                            showVRNotSupportedMessage();
+                        });
+                    } else {
+                        // WebXR is supported but immersive-vr is not
+                        document.getElementById('vr-loading').style.display = 'none';
+                        showVRNotSupportedMessage();
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking VR support:', error);
+                    document.getElementById('vr-loading').style.display = 'none';
+                    showVRNotSupportedMessage();
+                });
+        } else {
+            // WebXR is not supported at all
+            document.getElementById('vr-loading').style.display = 'none';
+            showVRNotSupportedMessage();
+        }
     }
 });
-
 
 
 
@@ -1010,7 +1036,7 @@ function createExitButton() {
     const exitButton = new THREE.Mesh(geometry, material);
     
     // Position it in a more visible location
-    exitButton.position.set(0, 1.01, -0.43);
+    exitButton.position.set(0, 1.02, -0.44);
     exitButton.rotation.x = Math.PI / 5; // Make it face upward
     exitButton.userData.isInteractable = true;
     exitButton.userData.type = 'exitButton';
@@ -1166,7 +1192,7 @@ function setupLoaders() {
     // Initialize scene
     clock = new THREE.Clock();
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x87CEEB); // Sky blue
+    scene.background = new THREE.Color(0x000000); // black background
     
     // Initialize camera
     camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -2966,7 +2992,7 @@ function handleTextOnlySpeech(text) {
 }
 
 
-        function playAudioFile(filename) {
+    function playAudioFile(filename) {
     // Don't allow audio playback if already speaking
     if (npcSpeaking) {
         console.log("NPC is already speaking, ignoring audio file playback");
@@ -3002,12 +3028,14 @@ function handleTextOnlySpeech(text) {
                 }
             }
             
-            // Generate and start lip sync
-            startLipSync(lipSyncText);
+             // Generate and start lip sync
+             startLipSync(lipSyncText);
             
             // Select animation based on audio content
             let animationCategory = 'talking';
-            if (filename.includes("hello")) {
+            
+            // Use greeting animation for both hello and goodbye
+            if (filename.includes("hello") || filename.includes("thanks") || filename.includes("goodbye")) {
                 animationCategory = 'greeting';
             }
             
@@ -3258,40 +3286,30 @@ function handleTextOnlySpeech(text) {
 }
 
 function startNPCMovement() {
-    if (!npcAvatar || npcSpeaking || npcMovementCooldown) return;
+    if (!npcAvatar || npcSpeaking) return;
     
     // Get player position
     const userPosition = new THREE.Vector3();
     cameraRig.getWorldPosition(userPosition);
     
-    // Get direction to player
-    const direction = new THREE.Vector3();
-    direction.subVectors(userPosition, npcAvatar.position);
-    direction.y = 0;
+    // Calculate direction for facing
+    const faceDir = new THREE.Vector3();
+    faceDir.subVectors(userPosition, npcAvatar.position).normalize();
+    faceDir.y = 0; // Keep on xz plane
     
-    // Calculate distance
-    const distance = direction.length();
-    const optimalDistance = 2.0;
-    
-    // Only move if significantly far away
-    if (distance > optimalDistance + 1.0) {
-        console.log("Player teleported - NPC following to new position");
+    if (faceDir.length() > 0) {
+        // Calculate rotation to face player
+        const targetRotation = Math.atan2(faceDir.x, faceDir.z);
         
-        // Calculate target position (slightly in front of player)
-        direction.normalize();
-        const targetPosition = new THREE.Vector3();
-        targetPosition.copy(userPosition).sub(direction.multiplyScalar(optimalDistance));
-        
-        // Move NPC to position over time
-        npcMoving = true;
-        npcMovementCooldown = true;
-        
-        // Play walking animation
-        playAnimationByCategory('walk');
-        
-        // Smoothly move to target position
-        moveNPCToPosition(targetPosition, 2.0);
+        // Apply rotation with a small interpolation for smoother turning
+        npcAvatar.rotation.y = THREE.MathUtils.lerp(
+            npcAvatar.rotation.y,
+            targetRotation,
+            0.5
+        );
     }
+    
+    console.log("Player teleported - NPC turned to face player");
 }
 
 function moveNPCToPosition(targetPosition, duration) {
