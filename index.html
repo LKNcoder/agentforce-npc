@@ -941,109 +941,53 @@ body.vr-active canvas {
 
    
    // Handle VR button click
-document.getElementById('enter-vr-button').addEventListener('click', function(e) {
+   document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
     console.log('Enter VR button clicked');
     
-    // Show loading screen with clearer mic instruction
+    // Show loading screen
     const loadingEl = document.getElementById('vr-loading');
     loadingEl.innerHTML = `
-        <h2>Microphone Access Required</h2>
-    <p>Please click "Allow" when prompted for microphone access.</p>
-    <div style="margin-top: 15px;">
-        <img src="mic-icon.png" alt="Microphone" style="width: 60px; height: 60px; opacity: 0.8;">
-    </div>
-    <div style="margin-top: 20px; text-align: center;">
-        <button id="retry-mic-button" style="padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; display: none;">Try Again</button>
-    </div>
-    <p id="mic-status" style="margin-top: 15px; font-size: 14px;"></p>
-    <div style="margin-top: 15px; font-size: 12px; color: #ccc; max-width: 400px; margin: 15px auto; text-align: left;">
-        <p><strong>Troubleshooting:</strong></p>
-        <ul style="text-align: left; padding-left: 20px;">
-            <li>Check for the permission icon in your browser's address bar</li>
-            <li>If blocked, click the icon and change to "Allow"</li>
-            <li>Try using a different browser (Chrome works best)</li>
-            <li>On mobile, check your device permissions</li>
-        </ul>
-    </div>
-`;
+        <h2>Initializing VR Experience</h2>
+        <p>Please wait...</p>
+    `;
     loadingEl.style.display = 'flex';
     
-    // Function to request microphone access
-    function requestMicAccess() {
-    document.getElementById('mic-status').textContent = "Waiting for permission...";
-    
-    // Add clear instructions about browser permissions
-    const micStatusEl = document.getElementById('mic-status');
-    micStatusEl.innerHTML = "Waiting for permission...<br><small>If no prompt appears, check your browser address bar for blocked permissions.</small>";
-    
-    // Force a new permission context with a slight delay
-    setTimeout(() => {
-        // Request microphone access with explicit constraints
-        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-            navigator.mediaDevices.getUserMedia({ 
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                }
-            })
+    // First explicitly request microphone permission - THIS IS THE CRITICAL PART
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
             .then(stream => {
-                console.log('Microphone access granted');
+                console.log('Microphone permission granted!');
                 window.microphoneStream = stream; // Store globally
                 
-                micStatusEl.textContent = "Access granted! Starting VR...";
-                
-                // Initialize speech recognition after permission granted
+                // Initialize speech recognition now that we have permission
                 if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                    // Set up speech recognition
                     setupSpeechRecognition();
                 }
                 
-                // Proceed to VR initialization after a short delay
-                setTimeout(() => {
-                    initVRWithMic();
-                }, 1000);
+                // Now initialize VR with the granted microphone access
+                initVRWithMic();
             })
             .catch(error => {
-                console.warn('Microphone access denied:', error);
-                // Show detailed error message and instructions
-                micStatusEl.innerHTML = `
-                    Microphone access denied or blocked.<br>
-                    <small>Error: ${error.name}</small><br>
-                    <small>Check your browser settings by clicking the lock/info icon in the address bar.</small><br>
-                    <small>You can continue without voice features or try again.</small>
+                console.warn('Microphone permission denied:', error);
+                // Show skip option
+                loadingEl.innerHTML = `
+                    <h2>Microphone Access Denied</h2>
+                    <p>VR experience will continue without voice interaction.</p>
+                    <button id="continue-without-mic" style="padding: 12px 20px; background: #FF5722; color: white; border: none; border-radius: 5px; margin-top: 20px; cursor: pointer;">Continue Anyway</button>
                 `;
-                
-                // Add a "Continue without microphone" option
-                const skipButton = document.createElement('button');
-                skipButton.textContent = "Continue without microphone";
-                skipButton.style = "padding: 10px 20px; background: #FF9800; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 10px 5px;";
-                skipButton.onclick = function() {
-                    initVRWithMic(); // Continue to VR without mic
-                };
-                
-                const buttonContainer = document.createElement('div');
-                buttonContainer.style = "margin-top: 20px;";
-                buttonContainer.appendChild(skipButton);
-                
-                const retryButton = document.getElementById('retry-mic-button');
-                if (retryButton) {
-                    retryButton.style.display = 'inline-block';
-                    retryButton.style = "padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer; margin: 10px 5px;";
-                    buttonContainer.appendChild(retryButton);
-                }
-                
-                micStatusEl.appendChild(buttonContainer);
+                document.getElementById('continue-without-mic').addEventListener('click', () => {
+                    initVRWithMic();
+                });
             });
-        } else {
-            micStatusEl.textContent = "Your browser doesn't support microphone access.";
-            setTimeout(() => {
-                initVRWithMic(); // Continue anyway after showing the message
-            }, 2000);
-        }
-    }, 500); // Small delay to ensure the DOM has updated
-}   
+    } else {
+        // Browser doesn't support getUserMedia
+        initVRWithMic();
+    }
+});
+    
+    
+   
     
  
 
@@ -1096,7 +1040,7 @@ document.getElementById('enter-vr-button').addEventListener('click', function(e)
             showVRNotSupportedMessage();
         }
     }
-});
+
 
 
 
