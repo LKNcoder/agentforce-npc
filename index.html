@@ -914,6 +914,20 @@
     // Handle VR button click
     document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
+
+     // Make sure scene and renderer are initialized
+     if (!scene || !renderer) {
+        console.log('Initializing scene and renderer first');
+        scene = new THREE.Scene();
+        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.xr.enabled = true;
+        
+        // Add to DOM even if invisible, to ensure WebXR setup is complete
+        document.getElementById('vr-experience').appendChild(renderer.domElement);
+        document.getElementById('vr-experience').style.display = 'none';
+    }
     
     // Show explicit permission request screen
     document.getElementById('vr-loading').style.display = 'flex';
