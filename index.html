@@ -1287,6 +1287,8 @@ function setupLoaders() {
     // Set up controllers
     setupControllers();
 
+    createMicIndicator();
+
     createExitButton();
     
     setupSpatialAudio();
@@ -1629,7 +1631,7 @@ function createModelLabel(modelObject, name) {
     if (name === 'Nature Explorer') {
         // Model 1 - Position to the left of user
         labelX = -8.0;
-        labelZ = 1.5;
+        labelZ = -4.0;
     } else if (name === 'Adventure Tower') {
         // Model 2 - Position straight ahead
         labelX = -1.0;
@@ -1637,7 +1639,7 @@ function createModelLabel(modelObject, name) {
     } else if (name.includes('Toddler Zone')) {
         // Model 3 - Position to the right of user
         labelX = 7.0;
-        labelZ = 0;
+        labelZ = -2.0;
     } else {
         // For other models, try to get position from the model
         const modelPos = new THREE.Vector3();
@@ -2553,6 +2555,38 @@ function npcDontUnderstand() {
     const randomPhrase = errorPhrases[Math.floor(Math.random() * errorPhrases.length)];
     npcSpeak(randomPhrase);
 }
+
+
+
+
+
+function createMicIndicator() {
+    // Create a small sphere that will pulse with voice
+    const geometry = new THREE.SphereGeometry(0.05, 16, 16);
+    const material = new THREE.MeshStandardMaterial({
+        color: 0x00ff00,
+        emissive: 0x00ff00,
+        emissiveIntensity: 0.5
+    });
+    
+    volumeIndicator = new THREE.Mesh(geometry, material);
+    
+    // Position it in view but out of the way
+    volumeIndicator.position.set(0, 1.5, -0.5);
+    
+    // Add to camera rig so it moves with you
+    cameraRig.add(volumeIndicator);
+    
+    console.log('Microphone indicator created');
+}
+
+
+
+
+
+
+
+
 
 
 
@@ -3967,7 +4001,7 @@ function sayGoodbye() {
         }
         
         // Update volume visualization - with null checks
-        if (audioAnalyser && document.getElementById('volumeIndicator')) {
+        if (audioAnalyser && analyserData) {
             // Get volume data
             audioAnalyser.getByteFrequencyData(analyserData);
             
@@ -3978,19 +4012,25 @@ function sayGoodbye() {
             }
             const average = sum / analyserData.length;
             
-            // Update volume indicator height
+            // Update DOM volume indicator if it exists
             const volumeIndicator = document.getElementById('volumeIndicator');
             if (volumeIndicator) {
-                volumeIndicator.style.height = `${Math.min(100, average)}%`;
+                // ...existing code...
+            }
+            
+            // Update 3D mic indicator
+            if (micIndicator) {
+                // Smoothly lerp to new value to avoid jittering
+                lastVolumeLevel = THREE.MathUtils.lerp(lastVolumeLevel, average, 0.2);
                 
-                // Change color based on volume
-                if (average < 20) {
-                    volumeIndicator.style.backgroundColor = '#4CAF50'; // Green
-                } else if (average < 60) {
-                    volumeIndicator.style.backgroundColor = '#FFC107'; // Yellow
-                } else {
-                    volumeIndicator.style.backgroundColor = '#FF5722'; // Orange-Red
-                }
+                // Scale based on volume (min 1.0, max 3.0)
+                const scaleFactor = 1.0 + Math.min(2.0, lastVolumeLevel / 50);
+                micIndicator.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                
+                // Make color more red as volume increases
+                const intensity = Math.min(1.0, lastVolumeLevel / 100);
+                micIndicator.material.emissive.setRGB(intensity, 1.0 - intensity * 0.5, 0);
+                micIndicator.material.emissiveIntensity = 0.5 + intensity;
             }
         }
         
