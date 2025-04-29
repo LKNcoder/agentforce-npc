@@ -22,22 +22,20 @@
             padding: 0 20px;
         }
 
-        body.vr-active #website-content {
-    display: none !important;
-    visibility: hidden !important;
-    z-index: -999 !important;
-    opacity: 0 !important;
+    body.vr-active {
+    overflow: hidden;
+    position: fixed;
+    width: 100%;
+    height: 100%;
 }
 
-body.vr-active #vr-experience {
-    display: block !important;
-    visibility: visible !important; 
-    z-index: 999 !important;
+body.vr-active canvas {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     width: 100% !important;
     height: 100% !important;
+    z-index: 9999 !important;
 }
         
         /* Header */
@@ -949,69 +947,53 @@ body.vr-active #vr-experience {
     // Show loading screen
     document.getElementById('vr-loading').style.display = 'flex';
     
-    // Ensure renderer exists
-    if (!renderer) {
-        console.error("Renderer not initialized");
-        return;
-    }
-    
-    // Add renderer to DOM immediately - THIS IS CRITICAL
-    if (!renderer.domElement.parentElement) {
-        document.getElementById('vr-experience').appendChild(renderer.domElement);
-    }
-    
-    // Initialize VR if needed
-    if (!vrInitialized) {
-        console.log('Initializing VR experience');
+    // Initialize scene and renderer if not already done
+    if (!scene || !renderer) {
         initVRExperience();
         vrInitialized = true;
     }
     
-    // Make sure VR experience container is visible
-    document.getElementById('vr-experience').style.display = 'block';
-    
-    console.log('Requesting VR session');
-    navigator.xr.requestSession('immersive-vr', {
-    optionalFeatures: ['local-floor']
-}).then(session => {
-    console.log('VR session obtained successfully');
-    
-    // Clear the DOM first
+    // Before requesting VR session, make sure the THREE.js canvas exists in the DOM
     const vrElement = document.getElementById('vr-experience');
-    while (vrElement.firstChild) {
-        if (vrElement.firstChild !== renderer.domElement) {
-            vrElement.removeChild(vrElement.firstChild);
-        }
-    }
+    vrElement.innerHTML = ''; // Clear any existing content
+    vrElement.appendChild(renderer.domElement);
+    vrElement.style.display = 'block';
     
-    // Add renderer canvas if needed
-    if (!renderer.domElement.parentElement) {
-        vrElement.appendChild(renderer.domElement);
-    }
-    
-    // Force canvas to be visible and full screen
+    // Force canvas to be visible and properly sized
     renderer.domElement.style.display = 'block';
     renderer.domElement.style.position = 'fixed';
     renderer.domElement.style.top = '0';
     renderer.domElement.style.left = '0';
-    renderer.domElement.style.width = '100%';
-    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.width = '100vw';
+    renderer.domElement.style.height = '100vh';
     renderer.domElement.style.zIndex = '2000';
     
-    // Connect session and hide other content
-    renderer.xr.setSession(session);
-    document.getElementById('website-content').style.display = 'none';
-    document.getElementById('vr-loading').style.display = 'none';
-    vrElement.style.display = 'block';
-    
-    if (!clock) clock = new THREE.Clock();
-    animate();
-    
-    console.log('VR scene should now be visible');
-}).catch(error => {
+    // Request VR session
+    navigator.xr.requestSession('immersive-vr', {
+        optionalFeatures: ['local-floor']
+    }).then(function(session) {
+        console.log('VR session obtained successfully');
+        
+        // Connect session to renderer
+        renderer.xr.setSession(session).then(() => {
+            console.log('Renderer connected to XR session');
+            
+            // Apply proper body class and hide website content
+            document.body.classList.add('vr-active');
+            document.getElementById('website-content').style.display = 'none';
+            document.getElementById('vr-loading').style.display = 'none';
+            
+            // Ensure animation loop is running
+            if (!clock) clock = new THREE.Clock();
+            animate();
+            
+            console.log('VR scene should now be visible');
+        });
+    }).catch(function(error) {
         console.error('Error entering VR:', error);
         document.getElementById('vr-loading').style.display = 'none';
         document.getElementById('vr-experience').style.display = 'none';
+        showVRNotSupportedMessage();
     });
 });
 
@@ -1144,38 +1126,31 @@ function checkExitButtonIntersection() {
 
         // Exit VR button functionality
         document.addEventListener('DOMContentLoaded', function() {
-            // Create scene first
+    // Create basic scene and renderer only - don't initialize everything yet
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x000000); // Black background
-
-    // Create renderer early to ensure it exists before VR button click
-renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(window.devicePixelRatio);
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.xr.enabled = true; // Enable WebXR right away
-
-            // Set up fog
-    scene.fog = new THREE.Fog(0x87CEEB, 0.1, 1000); // Add fog to the scene
-
-            // Load NPC model in the background as soon as page loads
+    
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true; // Enable WebXR right away
+    
+    // Set up manager for later use
     loadingManager = new THREE.LoadingManager();
     setupLoaders();
+    
+    // Preload the NPC avatar in the background for faster startup
     loadNPCAvatar();
 
-            const exitButton = document.getElementById('exitVrButton');
-            if (exitButton) {
-                exitButton.addEventListener('click', function() {
-                    // Exit any active VR session
-                    if (renderer && renderer.xr.isPresenting) {
-                        renderer.xr.getSession().end();
-                    }
-                    
-                    // Hide VR experience, show website
-                    document.getElementById('vr-experience').style.display = 'none';
-                    document.getElementById('website-content').style.display = 'block';
-                });
+    // Set up exit button handler
+    const exitButton = document.getElementById('exitVrButton');
+    if (exitButton) {
+        exitButton.addEventListener('click', function() {
+            if (renderer && renderer.xr.isPresenting) {
+                renderer.xr.getSession().end();
             }
         });
+    }
+});
 
         // Show VR not supported message
         function showVRNotSupportedMessage() {
@@ -3771,7 +3746,7 @@ function sayGoodbye() {
         // Handle VR session end
     function handleVRSessionEnd() {
     console.log('VR session ended');
-
+    
     // Remove VR active class from body
     document.body.classList.remove('vr-active');
     
@@ -3780,25 +3755,26 @@ function sayGoodbye() {
         ambientSound.stop();
     }
     
-    // Reset any VR-specific state
+    // Reset VR state
     if (npcSpeaking) {
         npcSpeaking = false;
         stopLipSync();
     }
     
-    // Hide VR experience elements and show website content
+    // Clean up THREE.js canvas
+    const vrElement = document.getElementById('vr-experience');
+    if (renderer.domElement.parentElement === vrElement) {
+        vrElement.removeChild(renderer.domElement);
+    }
+    
+    // Hide VR experience, show website content
     document.getElementById('vr-experience').style.display = 'none';
     document.getElementById('website-content').style.display = 'block';
     
-    // Reset any pending timers
+    // Clear any pending timers
     if (npcMovementTimeout) {
         clearTimeout(npcMovementTimeout);
     }
-    
-    // Return focus to the main window
-    window.focus();
-    
-    console.log('Successfully returned to main website');
 }
 
         // Window resize handler
