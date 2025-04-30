@@ -2808,110 +2808,115 @@ function splitTextIntoPages(text, maxCharsPerPage = 100) {
 
         // NPC speak with text
         function npcSpeak(text) {
-            // Don't allow speech if already speaking
-            if (npcSpeaking) {
-                console.log("NPC is already speaking, ignoring new speech request");
-                return;
-            }
-            
-            npcSpeaking = true;
+    // Ensure we're not already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring new speech request");
+        return;
+    }
+    
+    console.log("NPC speaking:", text);
+    npcSpeaking = true;
 
-            // Check if we have a pre-recorded audio for this phrase
-            const audioFile = preloadedPhrases[text];
+    // Check if we have a pre-recorded audio for this phrase
+    const audioFile = preloadedPhrases[text];
 
-            // Show text in appropriate speech bubble
-            if (renderer && renderer.xr.isPresenting) {
-                updateVRSpeechBubble(text);
-            } else {
-                showSpeechBubble(text);
-            }
+    // Show text in appropriate speech bubble
+    if (renderer && renderer.xr && renderer.xr.isPresenting) {
+        if (vrSpeechBubble) {
+            updateVRSpeechBubble(text);
+        } else {
+            console.warn("VR speech bubble not initialized");
+        }
+    } else {
+        showSpeechBubble(text);
+    }
 
-            // Select animation based on speech content
-            let animationCategory = 'talking';
+    // Select animation based on speech content
+    let animationCategory = 'talking';
+    
+    // Check text content for contextual animation selection
+    const lowerText = text.toLowerCase();
 
-// Check text content for contextual animation selection
-const lowerText = text.toLowerCase();
-
-// Greeting animations
-if (lowerText.includes('hello') || lowerText.includes('welcome') || 
-    lowerText.includes('hi there') || lowerText.startsWith('hi')) {
-    animationCategory = 'greeting';
-}
-// Goodbye animations
-else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
-         lowerText.includes('see you') || lowerText.includes('thank')) {
-    animationCategory = 'greeting'; // Wave for goodbyes too
-}
-// Error/uncertainty/shrug animations
-else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
-         lowerText.includes("sorry") || lowerText.includes("can't help") ||
-         lowerText.includes("didn't catch what you said") || 
-         lowerText.includes("didn't quite understand") ||
-         lowerText.includes("i apologize")) {
-    animationCategory = 'error';  // This will use the shrug animation
-    applyUncertaintyExpression();
-}
-// Affirmative/yes animations
-else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
-         lowerText.includes("correct") || lowerText.includes("certainly") ||
-         lowerText.includes("of course") || lowerText.includes("sure") ||
-         lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
-    animationCategory = 'affirmative';  // This will use the yes animation
-}
-// Negative/no animations
-else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
-         lowerText.includes("can't") || lowerText.includes("won't") ||
-         lowerText.includes("don't have that information") || text === "I can't help with that.") {
-    animationCategory = 'negative';  // This will use the no animation
-}
-            
-            // Play the appropriate animation
-            playAnimationByCategory(animationCategory);
-            
-            // If we have a pre-recorded audio file, use it
+    // Animation selection logic (unchanged)
+    if (lowerText.includes('hello') || lowerText.includes('welcome') || 
+        lowerText.includes('hi there') || lowerText.startsWith('hi')) {
+        animationCategory = 'greeting';
+    } else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
+        lowerText.includes('see you') || lowerText.includes('thank')) {
+        animationCategory = 'greeting';
+    } else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
+        lowerText.includes("sorry") || lowerText.includes("can't help") ||
+        lowerText.includes("didn't catch what you said") || 
+        lowerText.includes("didn't quite understand") ||
+        lowerText.includes("i apologize")) {
+        animationCategory = 'error';
+        applyUncertaintyExpression();
+    } else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
+        lowerText.includes("correct") || lowerText.includes("certainly") ||
+        lowerText.includes("of course") || lowerText.includes("sure") ||
+        lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
+        animationCategory = 'affirmative';
+    } else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
+        lowerText.includes("can't") || lowerText.includes("won't") ||
+        lowerText.includes("don't have that information") || text === "I can't help with that.") {
+        animationCategory = 'negative';
+    }
+    
+    // Play the appropriate animation
+    playAnimationByCategory(animationCategory);
+    
+    // If we have a pre-recorded audio file, use it
     if (audioFile) {
         console.log(`Playing pre-recorded audio: ${audioFile}`);
         
-        // Play the audio file
-        const audio = new Audio(`./audio-cache/${audioFile}`);
-        
-        // Set up audio callbacks
-        audio.oncanplaythrough = () => {
-            // Start lip sync
-            startLipSync(text);
-        };
-        
-        audio.onended = () => {
-            // Reset NPC state
-            npcSpeaking = false;
-            stopLipSync();
-            resetUncertaintyExpression();
+        try {
+            // Create a fresh Audio object each time
+            const audio = new Audio(`./audio-cache/${audioFile}`);
             
-            if (renderer && renderer.xr.isPresenting) {
-                vrSpeechBubble.visible = false;
-            } else {
-                speechBubble.style.display = 'none';
-            }
+            // Set up audio callbacks
+            audio.oncanplaythrough = () => {
+                console.log("Audio can play through, starting lip sync");
+                // Start lip sync
+                startLipSync(text);
+            };
             
-            // Return to idle animation if not moving
-            if (!npcMoving) {
-                playAnimationByCategory('idle');
-            }
-        };
-        
-        audio.onerror = (e) => {
-            console.error("Audio file playback error:", e);
-            // Fall back to text only
-            generateEnhancedLipSync(text, text.length * 0.1);
+            audio.onended = () => {
+                console.log("Audio playback ended");
+                // Reset NPC state
+                npcSpeaking = false;
+                stopLipSync();
+                resetUncertaintyExpression();
+                
+                if (renderer && renderer.xr && renderer.xr.isPresenting) {
+                    if (vrSpeechBubble) vrSpeechBubble.visible = false;
+                } else {
+                    const speechBubble = document.getElementById('speechBubble');
+                    if (speechBubble) speechBubble.style.display = 'none';
+                }
+                
+                // Return to idle animation if not moving
+                if (!npcMoving) {
+                    playAnimationByCategory('idle');
+                }
+            };
+            
+            audio.onerror = (e) => {
+                console.error("Audio file playback error:", e);
+                // Fall back to text only
+                generateEnhancedLipSync(text, text.length * 0.1);
+                handleTextOnlySpeech(text);
+            };
+            
+            // Try to play the audio with better error handling
+            audio.play().catch(error => {
+                console.error("Error playing audio:", error);
+                // Fall back to text only
+                handleTextOnlySpeech(text);
+            });
+        } catch (err) {
+            console.error("Error setting up audio playback:", err);
             handleTextOnlySpeech(text);
-        };
-        
-        // Try to play the audio
-        audio.play().catch(error => {
-            console.error("Error playing audio:", error);
-            // Fall back to text only
-            handleTextOnlySpeech(text);
-        });
+        }
     } else {
         // No audio file available - use text only
         handleTextOnlySpeech(text);
@@ -3181,7 +3186,11 @@ function resetUncertaintyExpression() {
     displayPage(0);
     
     function displayPage(pageIndex) {
-    if (!vrSpeechBubble || !vrSpeechBubble.userData || !vrSpeechBubble.userData.pages) return;
+    // Early exit if missing required objects
+    if (!vrSpeechBubble || !vrSpeechBubble.userData || !vrSpeechBubble.userData.pages) {
+        console.warn("Cannot display page - missing speech bubble or page data");
+        return;
+    }
     
     const { canvas, context, texture } = vrSpeechBubble.userData;
     const pages = vrSpeechBubble.userData.pages;
@@ -4450,6 +4459,11 @@ function sayGoodbye() {
         // Extract the rotation from the matrix
         const rotation = new THREE.Quaternion();
         rotation.setFromRotationMatrix(lookMatrix);
+
+         // This is the key fix: apply 180-degree rotation around Y-axis
+         const flipRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
+        rotation.multiply(flipRotation);
+
         vrSpeechBubble.quaternion.copy(rotation);
         
         // Now add a tilt that's relative to the direction we're facing
