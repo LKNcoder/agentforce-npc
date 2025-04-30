@@ -879,7 +879,11 @@ body.vr-active canvas {
     "Have you also considered a sandbox?": "have-you-also-considered-a-san.mp3",
     "Our playscapes come in dozens of colors.": "our-playscapes-come-in-dozens-.mp3",
     "Let me show you a pink version of this model": "let-me-show-you-a-pink-version.mp3",
-    "If you have any questions, just ask.": "if-you-have-any-questions-just.mp3"
+    "If you have any questions, just ask.": "if-you-have-any-questions-just.mp3",
+
+    "This model is perfect for children ages four to twelve. Our realistic, low-maintenence synthetic wood composite material is durable and resistant to harsh weather. We also have real hardwood options, pressure treated and sealed, available in a dozen varieties including cedar, walnut, redwood and oak. Both are backed by a twenty year warranty.": "model1.mp3",
+    "This model is perfect for schools and parks, featuring a double slide and climbing structure.": "model2.mp3",
+    "This play structure is designed for children ages 3 to 9 years old. It has an integrated tic tac toe game for kids to build cognitive skills while they play. The slides are made from high-density polyethylene. The frame is powder-coated aluminum. It's easy to assemble and install by yourself at home.": "model3.mp3"
 
 
 
@@ -1318,7 +1322,7 @@ function setupLoaders() {
     // Set up controllers
     setupControllers();
 
-    createMicIndicator();
+    // createMicIndicator();
 
     createExitButton();
     
@@ -1857,8 +1861,7 @@ function replaceModelWithPinkVersion() {
             const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
             npcAvatar.lookAt(lookTarget);
             
-            // Play pointing animation
-            playAnimationByCategory('pointing');
+            
             
             // Return to idle after a delay
             setTimeout(() => {
@@ -2419,6 +2422,40 @@ function replaceModelWithPinkVersion() {
         return;
     }
 
+    // Check for questions about specific models
+if (lowerText.includes('model') || lowerText.includes('playground') || 
+    lowerText.includes('structure') || lowerText.includes('tell me about')) {
+    
+    // Check which model they're asking about
+    if ((lowerText.includes('model 1') || lowerText.includes('model1') || 
+         lowerText.includes('first model') || lowerText.includes('nature explorer'))) {
+        
+        // Point to model1 and play the audio response
+        pointToModelAndSpeak('model1.glb', "This model is perfect for children ages four to twelve. Our realistic, low-maintenence synthetic wood composite material is durable and resistant to harsh weather. We also have real hardwood options, pressure treated and sealed, available in a dozen varieties including cedar, walnut, redwood and oak. Both are backed by a twenty year warranty.");
+        return;
+    }
+    else if ((lowerText.includes('model 2') || lowerText.includes('model2') || 
+              lowerText.includes('second model') || lowerText.includes('adventure tower'))) {
+        
+        // Point to model2 and play the audio response
+        pointToModelAndSpeak('model2.glb', "This model is perfect for schools and parks, featuring a double slide and climbing structure.");
+        return;
+    }
+    else if ((lowerText.includes('model 3') || lowerText.includes('model3') || 
+              lowerText.includes('third model') || lowerText.includes('toddler zone'))) {
+        
+        // Point to model3 (or pink version) and play the audio response
+        const modelPath = findToddlerZoneModel();
+        pointToModelAndSpeak(modelPath, "This play structure is designed for children ages 3 to 9 years old. It has an integrated tic tac toe game for kids to build cognitive skills while they play. The slides are made from high-density polyethylene. The frame is powder-coated aluminum. It's easy to assemble and install by yourself at home.");
+        return;
+    }
+    else if (lowerText.includes('all models') || lowerText.includes('tell me about the models')) {
+        // General information about all models
+        npcSpeak("We have three main playground models. The Nature Explorer for ages 4-12, the Adventure Tower perfect for schools and parks, and the Toddler Zone for ages 3-9. Which one would you like to know more about?");
+        return;
+    }
+}
+
      // Check for "wood" keyword
      if (lowerText.includes('wood')) {
         npcSpeak("Our Adventure Tower model features premium pressure-treated wood that's resistant to weathering and insects. It's our most durable natural material option.");
@@ -2439,15 +2476,7 @@ function replaceModelWithPinkVersion() {
                     const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
                     npcAvatar.lookAt(lookTarget);
                     
-                    // Play pointing animation
-                    playAnimationByCategory('pointing');
                     
-                    // Return to idle after pointing
-                    setTimeout(() => {
-                        if (!npcSpeaking) {
-                            playAnimationByCategory('idle');
-                        }
-                    }, 3000);
                 }
             });
         }, 1000);
@@ -2474,15 +2503,7 @@ function replaceModelWithPinkVersion() {
                     const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
                     npcAvatar.lookAt(lookTarget);
                     
-                    // Play pointing animation
-                    playAnimationByCategory('pointing');
                     
-                    // Return to idle after pointing
-                    setTimeout(() => {
-                        if (!npcSpeaking) {
-                            playAnimationByCategory('idle');
-                        }
-                    }, 3000);
                 }
             });
         }, 1000);
@@ -2645,7 +2666,7 @@ function createMicIndicator() {
     
     volumeIndicator = new THREE.Mesh(geometry, material);
     // Position it in view but out of the way
-    volumeIndicator.position.set(0, 1.5, -0.5);
+    volumeIndicator.position.set(0, 1.5, 6);
     
     // Add to camera rig so it moves with you
     cameraRig.add(volumeIndicator);
@@ -2722,6 +2743,7 @@ else if (lowerText.includes("i don't know") || lowerText.includes("not sure") ||
          lowerText.includes("didn't quite understand") ||
          lowerText.includes("i apologize")) {
     animationCategory = 'error';  // This will use the shrug animation
+    applyUncertaintyExpression();
 }
 // Affirmative/yes animations
 else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
@@ -2757,6 +2779,7 @@ else if (lowerText.includes("no") || lowerText.includes("unfortunately") ||
             // Reset NPC state
             npcSpeaking = false;
             stopLipSync();
+            resetUncertaintyExpression();
             
             if (renderer && renderer.xr.isPresenting) {
                 vrSpeechBubble.visible = false;
@@ -2809,6 +2832,7 @@ function handleTextOnlySpeech(text) {
         // Reset speaking flag
         npcSpeaking = false;
         stopLipSync();
+        resetUncertaintyExpression();
         
         // Return to idle animation
         playAnimationByCategory('idle');
@@ -2817,6 +2841,60 @@ function handleTextOnlySpeech(text) {
 
 
 
+function applyUncertaintyExpression() {
+    if (!npcAvatar) return;
+    
+    npcAvatar.traverse(node => {
+        if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
+            // Add eye squinting
+            const eyeSquintLeftIdx = node.morphTargetDictionary['eyesquintleft'];
+            const eyeSquintRightIdx = node.morphTargetDictionary['eyesquintright'];
+            const browDownRightIdx = node.morphTargetDictionary['browdownright'];
+            
+            // Apply squinting and brow movement
+            if (eyeSquintLeftIdx !== undefined) {
+                node.morphTargetInfluences[eyeSquintLeftIdx] = 1.0;
+            }
+            
+            if (eyeSquintRightIdx !== undefined) {
+                node.morphTargetInfluences[eyeSquintRightIdx] = 1.0;
+            }
+            
+            if (browDownRightIdx !== undefined) {
+                node.morphTargetInfluences[browDownRightIdx] = 1.0;
+            }
+        }
+    });
+}
+
+// Add this function to reset uncertainty expressions
+function resetUncertaintyExpression() {
+    if (!npcAvatar) return;
+    
+    npcAvatar.traverse(node => {
+        if (node.isMesh && node.morphTargetDictionary && node.morphTargetInfluences) {
+            // Reset eye squinting
+            const eyeSquintLeftIdx = node.morphTargetDictionary['eyesquintleft'];
+            const eyeSquintRightIdx = node.morphTargetDictionary['eyesquintright'];
+            const browDownRightIdx = node.morphTargetDictionary['browdownright'];
+            
+            if (eyeSquintLeftIdx !== undefined) {
+                node.morphTargetInfluences[eyeSquintLeftIdx] = 0.0;
+            }
+            
+            if (eyeSquintRightIdx !== undefined) {
+                node.morphTargetInfluences[eyeSquintRightIdx] = 0.0;
+            }
+            
+            if (browDownRightIdx !== undefined) {
+                node.morphTargetInfluences[browDownRightIdx] = 0.0;
+            }
+            
+            // Re-apply permanent smile
+            applyPermanentSmile();
+        }
+    });
+}
 
 
         // Start blinking NPC avatar
