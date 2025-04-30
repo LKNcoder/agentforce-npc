@@ -4115,11 +4115,11 @@ function easeInOutCubic(t) {
    
 
         // Update NPC movement to follow user
-    function updateNPCMovement() {
+        function updateNPCMovement() {
     // Only proceed if we have all required objects
     if (!npcAvatar || !renderer || !renderer.xr || !cameraRig) return;
     
-    if (!npcSpeaking && renderer.xr.isPresenting) {
+    if (renderer.xr.isPresenting) {
         // Make NPC look at player - with null checks
         const npcPosition = new THREE.Vector3();
         const userPosition = new THREE.Vector3();
@@ -4128,8 +4128,31 @@ function easeInOutCubic(t) {
             npcAvatar.getWorldPosition(npcPosition);
             cameraRig.getWorldPosition(userPosition);
             
-            // Only rotate head/eyes, not full body unless moving
-            // Eye tracking is handled separately
+            // Calculate direction for facing
+            const faceDir = new THREE.Vector3();
+            faceDir.subVectors(userPosition, npcPosition).normalize();
+            faceDir.y = 0; // Keep on xz plane
+            
+            // Don't rotate if NPC is actively speaking or performing a specific animation
+            if (!npcMoving && faceDir.length() > 0) {
+                // Calculate rotation to face player
+                const targetRotation = Math.atan2(faceDir.x, faceDir.z);
+                
+                // Calculate angle difference to determine if rotation is needed
+                let angleDiff = targetRotation - npcAvatar.rotation.y;
+                // Normalize angle to -PI to PI range
+                angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
+                
+                // Only rotate if the angle difference is significant
+                if (Math.abs(angleDiff) > 0.1) { // About 5.7 degrees
+                    // Apply rotation with a small interpolation for smoother turning
+                    npcAvatar.rotation.y = THREE.MathUtils.lerp(
+                        npcAvatar.rotation.y,
+                        targetRotation,
+                        0.05 // Lower value for smoother turning
+                    );
+                }
+            }
         } catch (error) {
             console.error('Error updating NPC movement:', error);
         }
@@ -4266,6 +4289,11 @@ function sayGoodbye() {
     if (npcMovementTimeout) {
         clearTimeout(npcMovementTimeout);
     }
+
+    setTimeout(() => {
+        window.location.reload();
+    }, 500);
+
 }
 
         // Window resize handler
@@ -4321,6 +4349,9 @@ function sayGoodbye() {
             }
                       
         }
+
+        // Update NPC movement to ensure NPC faces the user
+        updateNPCMovement();
 
         checkModelProximity();
 
