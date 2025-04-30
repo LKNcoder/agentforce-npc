@@ -129,6 +129,7 @@
         let morphTargetDict = null;
         let blinkInterval = null;
         let vrSpeechBubble;
+        let npcMoving = false;
 
         let ttsCache = {};  // In-memory cache
     let devMode = true; // Set to true to use cached responses
@@ -725,7 +726,29 @@ npcAvatar.traverse(function(child) {
 }
 
 
-
+// Updated function for welcoming
+function playWelcomeAnimation() {
+    if (npcSpeaking) return;
+    
+    // Play the wave animation
+    if (npcAnimations['wave']) {
+        for (const name in npcAnimations) {
+            if (npcAnimations[name].isRunning()) {
+                npcAnimations[name].fadeOut(0.3);
+            }
+        }
+        
+        npcAnimations['wave'].reset().fadeIn(0.3).play();
+        
+        // Return to idle after animation completes
+        const waveDuration = npcAnimations['wave']._clip.duration;
+        setTimeout(() => {
+            if (!npcSpeaking && !npcMoving) {
+                playAnimationByCategory('idle');
+            }
+        }, waveDuration * 1000 + 300); // Convert to milliseconds and add buffer
+    }
+}
 
 
 
@@ -759,12 +782,15 @@ function addSpontaneousSpeech() {
 
 // setup the spontaneous speech timer
 function setupSpontaneousSpeech() {
-    // Don't do the initial greeting here anymore
-    // Just set up the recurring speech timer
     setInterval(() => {
         // Only speak if not already speaking, with randomness, and in VR mode
-        if (!npcSpeaking && Math.random() < 0.7) {
-            addSpontaneousSpeech();
+        if (!npcSpeaking && !npcMoving && Math.random() < 0.7) {
+            // Occasionally do a thinking animation instead
+            if (Math.random() < 0.3) {
+                npcThink();
+            } else {
+                addSpontaneousSpeech();
+            }
         }
     }, 25000 + Math.random() * 20000);
 }
@@ -781,7 +807,7 @@ function loadNPCAnimations() {
     }
     
      // Load external animations from animations3.glb
-     console.log('Attempting to load animations from animations.gltf');
+     console.log('Attempting to load animations from animations3.glb');
     gltfLoader.load(
         'animations3.glb',
         function(gltf) {
@@ -798,28 +824,17 @@ function loadNPCAnimations() {
                 // Store in our animations dictionary
                 npcAnimations[animName] = action;
                 
-                // If this is the first animation and we don't have an idle animation yet, use it
-                if (index === 0 && !npcAnimations['idle']) {
-                console.log('Setting first external animation as idle');
-                  npcAnimations['idle'] = action;
-                   action.setEffectiveWeight(1.0);
-                   action.reset().play();
-    
-                    // Force immediate update
-                   if (npcMixer) {
-                     npcMixer.update(0);
-                   }
-                    }
-                
-                // If this animation name contains "talk" or "speak" and we don't have a talking animation yet,
-                // use it for the talking animation
-                if ((animName.toLowerCase().includes('talk') || 
-                     animName.toLowerCase().includes('speak')) && 
-                    !npcAnimations['talking']) {
-                    console.log(`Setting "${animName}" as talking animation`);
-                    npcAnimations['talking'] = action;
+                // If this is the first animation or matches our preferred idle, use it as idle
+                if (index === 0 && !npcAnimations['idle'] || animName === 'idleC') {
+                    console.log('Setting animation as idle:', animName);
+                    npcAnimations['idle'] = action;
+                    action.setEffectiveWeight(1.0);
+                    action.reset().play();
                 }
             });
+            
+            // Map specific animations to functions
+            mapAnimationTypes();
             
             console.log('Available animations:', Object.keys(npcAnimations));
         },
@@ -832,6 +847,95 @@ function loadNPCAnimations() {
         }
     );
 }
+
+
+// Function to map animation types for easier selection by context
+function mapAnimationTypes() {
+    // Create categories of animations for different contexts
+    const animationCategories = {
+        'talking': [],
+        'greeting': [],
+        'thinking': [],
+        'affirmative': [],
+        'negative': [],
+        'error': [],
+        'idle': []
+    };
+    
+    // Map specific animations to categories
+    Object.keys(npcAnimations).forEach(name => {
+        const lowerName = name.toLowerCase();
+        
+        // Classify animations by name
+        if (lowerName === 'talkc' || lowerName === 'talkd') {
+            animationCategories.talking.push(name);
+        }
+        else if (lowerName === 'wave') {
+            animationCategories.greeting.push(name);
+        }
+        else if (lowerName.includes('think') || lowerName === 'thinka' || lowerName === 'thinkb') {
+            animationCategories.thinking.push(name);
+        }
+        else if (lowerName === 'yes') {
+            animationCategories.affirmative.push(name);
+        }
+        else if (lowerName === 'no') {
+            animationCategories.negative.push(name);
+        }
+        else if (lowerName === 'shrugb' || lowerName.includes('shrug')) {
+            animationCategories.error.push(name);
+        }
+        else if (lowerName.includes('idle') || lowerName === 'idlec') {
+            animationCategories.idle.push(name);
+        }
+    });
+    
+    // Store the categorized animations in a global object for easy access
+    window.npcAnimationCategories = animationCategories;
+    
+    console.log('Animation categories mapped:', animationCategories);
+}
+
+// Function to play an animation by category
+function playAnimationByCategory(category, fadeTime = 0.5) {
+    // Skip if no animations loaded or mixer not available
+    if (!npcMixer || !window.npcAnimationCategories) return null;
+    
+    const animations = window.npcAnimationCategories[category];
+    
+    if (!animations || animations.length === 0) {
+        console.log(`No animations available for category: ${category}`);
+        return null;
+    }
+    
+    // Pick a random animation from this category
+    const randomIndex = Math.floor(Math.random() * animations.length);
+    const animName = animations[randomIndex];
+    
+    // Get the animation action
+    const action = npcAnimations[animName];
+    
+    if (!action) {
+        console.error(`Could not find animation: ${animName}`);
+        return null;
+    }
+    
+    // Fade out current animations
+    for (const name in npcAnimations) {
+        const a = npcAnimations[name];
+        if (a.isRunning()) {
+            a.fadeOut(fadeTime);
+        }
+    }
+    
+    // Play the new animation
+    action.reset().fadeIn(fadeTime).play();
+    console.log(`Playing animation: ${animName} (category: ${category})`);
+    
+    return action;
+}
+
+
         
         function setupSpeechRecognition() {
             // Set up Web Speech API if available
@@ -926,8 +1030,40 @@ function loadNPCAnimations() {
         showSpeechBubble(text);
     }
 
-    // Start lip sync animation
-    // startLipSync(text);
+     // Select animation based on speech content
+     let animationCategory = 'talking';
+    
+    // Check text content for contextual animation selection
+    const lowerText = text.toLowerCase();
+    
+    // Greeting animations
+    if (lowerText.includes('hello') || lowerText.includes('welcome') || 
+        lowerText.includes('hi there') || lowerText.startsWith('hi')) {
+        animationCategory = 'greeting';
+    }
+    // Goodbye animations
+    else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
+             lowerText.includes('see you') || lowerText.includes('thank')) {
+        animationCategory = 'greeting'; // Wave for goodbyes too
+    }
+    // Error/uncertainty animations
+    else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
+             lowerText.includes("sorry") || lowerText.includes("can't help")) {
+        animationCategory = 'error';
+    }
+    // Affirmative animations
+    else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
+             lowerText.includes("correct") || lowerText.includes("certainly")) {
+        animationCategory = 'affirmative';
+    }
+    // Negative animations
+    else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
+             lowerText.includes("can't") || lowerText.includes("won't")) {
+        animationCategory = 'negative';
+    }
+    
+ // Play the appropriate animation
+ const animation = playAnimationByCategory(animationCategory);
     
     // Use ElevenLabs TTS
     speakText(text).then(duration => {
@@ -939,23 +1075,18 @@ function loadNPCAnimations() {
             stopLipSync();
             
             // Return to idle animation
-            if (npcAnimations['talking'] && npcAnimations['idle']) {
-                npcAnimations['talking'].fadeOut(0.5);
-                npcAnimations['idle'].reset().fadeIn(0.5).play();
-            }
+            playAnimationByCategory('idle');
         }, 300); // Small delay to prevent abrupt animation stop
     }).catch(error => {
         console.error("Speech failed:", error);
         npcSpeaking = false;
         stopLipSync();
+        
+        // Show error animation
+        playAnimationByCategory('error');
+        // Return to idle after a short delay
+        setTimeout(() => playAnimationByCategory('idle'), 1500);
     });
-    
-    // If we have a talking animation, use it
-    if (npcAnimations['talking']) {
-        // Crossfade from idle to talking
-        npcAnimations['idle'].fadeOut(0.5);
-        npcAnimations['talking'].reset().fadeIn(0.5).play();
-    }
 }
 
 
@@ -1669,38 +1800,93 @@ function updateEyePosition(targetWorldPosition = null) {
 
 
         
-        function updateNPCMovement() {
-            if (!npcAvatar || !userAvatar) return;
+function updateNPCMovement() {
+    if (!npcAvatar || !camera) return;
+    
+    // If NPC should follow the user
+    if (npcFollowingUser) {
+        // Get direction to user camera/rig
+        const userPosition = new THREE.Vector3();
+        // Use camera rig position if available, otherwise use camera
+        if (cameraRig) {
+            cameraRig.getWorldPosition(userPosition);
+        } else {
+            camera.getWorldPosition(userPosition);
+        }
+        
+        // Create a direction vector towards the user
+        const direction = new THREE.Vector3();
+        direction.subVectors(userPosition, npcAvatar.position);
+        direction.y = 0; // Keep on ground plane
+        
+        // Calculate distance to user
+        const distance = direction.length();
+        
+        // If not too close, move towards user
+        if (distance > 2.0) {
+            direction.normalize();
             
-            // If NPC should follow the user
-            if (npcFollowingUser) {
-                // Get direction to user
-                const direction = new THREE.Vector3();
-                direction.subVectors(userAvatar.position, npcAvatar.position);
-                direction.y = 0; // Keep on ground plane
-                
-                // Calculate distance to user
-                const distance = direction.length();
-                
-                // If not too close, move towards user
-                if (distance > 1.5) {
-                    direction.normalize();
+            // Move NPC towards user
+            const moveSpeed = 0.02;
+            npcAvatar.position.x += direction.x * moveSpeed;
+            npcAvatar.position.z += direction.z * moveSpeed;
+            
+            // Rotate NPC to face user
+            npcAvatar.lookAt(
+                userPosition.x,
+                npcAvatar.position.y,
+                userPosition.z
+            );
+            
+            // If not already walking, start the walk animation
+            if (!npcMoving) {
+                if (window.npcAnimationCategories && npcAnimations['walk']) {
+                    // Stop current animations
+                    for (const name in npcAnimations) {
+                        if (npcAnimations[name].isRunning()) {
+                            npcAnimations[name].fadeOut(0.3);
+                        }
+                    }
                     
-                    // Move NPC towards user
-                    const moveSpeed = 0.02;
-                    npcAvatar.position.x += direction.x * moveSpeed;
-                    npcAvatar.position.z += direction.z * moveSpeed;
-                    
-                    // Rotate NPC to face user
-                    npcAvatar.lookAt(
-                        userAvatar.position.x,
-                        npcAvatar.position.y,
-                        userAvatar.position.z
-                    );
+                    // Start walk animation
+                    npcAnimations['walk'].reset().fadeIn(0.3).play();
+                    console.log('Starting walk animation');
+                    npcMoving = true;
                 }
             }
         }
+        // If close enough and currently walking, return to idle
+        else if (distance <= 2.0 && npcMoving) {
+            if (window.npcAnimationCategories) {
+                // Return to idle
+                playAnimationByCategory('idle');
+                console.log('Stopping walk animation, returning to idle');
+                npcMoving = false;
+            }
+        }
+    }
+}
         
+
+
+// Function to have the NPC think (to use when processing user input)
+function npcThink() {
+    if (npcSpeaking) return;
+    
+    playAnimationByCategory('thinking');
+    
+    // Return to idle after a short delay
+    setTimeout(() => {
+        if (!npcSpeaking) {
+            playAnimationByCategory('idle');
+        }
+    }, 3000); // Think for 3 seconds
+}
+
+
+
+
+
         function onWindowResize() {
             // Don't try to resize while in VR mode
     if (renderer.xr.isPresenting) return;
@@ -2274,7 +2460,7 @@ function handleVRSessionStart() {
             source.connect(audioContext.destination);
             source.start();
 
-            setupPingSound(); // Setup ping sound 
+            
         });
     }
     
@@ -2303,10 +2489,14 @@ function handleVRSessionStart() {
         });
     }
     
-    // Delay the welcome message until VR is fully initialized
-    setTimeout(() => {
+     // Delay the welcome message until VR is fully initialized
+     setTimeout(() => {
         if (!npcSpeaking) {
             showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            
+            // Play welcome animation
+            playWelcomeAnimation();
+            
             playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
                 console.error("Failed to play welcome audio:", err);
                 // Fallback to TTS if audio file fails
