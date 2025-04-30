@@ -2721,202 +2721,126 @@ function createMicIndicator() {
 
 
 
-// Helper function to split text into pages
-function splitTextIntoPages(text, maxCharsPerPage = 100) {
-    if (text.length <= maxCharsPerPage) {
-        return [text];
-    }
-    
-    const pages = [];
-    let currentPage = "";
-    const words = text.split(' ');
-    
-    for (const word of words) {
-        // Check if adding this word would exceed the limit
-        if ((currentPage + word).length > maxCharsPerPage && currentPage.length > 0) {
-            // Current page is full, start a new one
-            pages.push(currentPage.trim());
-            currentPage = word + " ";
-        } else {
-            currentPage += word + " ";
-        }
-    }
-    
-    // Add the last page if there's anything left
-    if (currentPage.trim().length > 0) {
-        pages.push(currentPage.trim());
-    }
-    
-    return pages;
-}
+
 
         // Show speech bubble
         function showSpeechBubble(text) {
-    const speechBubble = document.getElementById('speechBubble');
-    
-    // Make sure we found the element
-    if (!speechBubble) {
-        console.error('Speech bubble element not found!');
-        return;
-    }
-    
-    // Force visibility in case it was hidden
-    speechBubble.style.display = 'block';
-    
-    const pages = splitTextIntoPages(text);
-    let currentPageIndex = 0;
-    
-    function displayCurrentPage() {
-        if (currentPageIndex >= pages.length) {
-            // We've shown all pages, hide the bubble
-            speechBubble.style.display = 'none';
-            return;
+            speechBubble = document.getElementById('speechBubble');
+            speechBubble.textContent = text;
+            speechBubble.style.display = 'block';
+            
+            // Hide speech bubble after a delay
+            setTimeout(() => {
+                speechBubble.style.display = 'none';
+            }, text.length * 100 + 2000); // Duration based on text length
         }
         
-        const pageText = pages[currentPageIndex];
-        const isLastPage = currentPageIndex === pages.length - 1;
-        
-        // Show page counter for multi-page bubbles
-        const pageIndicator = pages.length > 1 ? 
-            `<div style="font-size:0.8em;color:#666;text-align:right">${currentPageIndex+1}/${pages.length}</div>` : '';
-        
-        // Add next page indicator if not the last page
-        const nextPageIndicator = !isLastPage ? 
-            '<div style="text-align:center;margin-top:5px">▼</div>' : '';
-        
-        speechBubble.innerHTML = pageText + nextPageIndicator + pageIndicator;
-        
-        // Make absolutely sure it's visible
-        speechBubble.style.display = 'block';
-        speechBubble.style.zIndex = '1000'; // Ensure high z-index
-        
-        // Calculate duration based on text length (longer for more text)
-        const pageDuration = Math.max(2000, pageText.length * 50);
-        
-        // Move to next page after duration
-        setTimeout(() => {
-            currentPageIndex++;
-            displayCurrentPage();
-        }, pageDuration);
-    }
-    
-    // Start displaying pages
-    displayCurrentPage();
-}
-        
-
-
         // NPC speak with text
         function npcSpeak(text) {
-    // Ensure we're not already speaking
-    if (npcSpeaking) {
-        console.log("NPC is already speaking, ignoring new speech request");
-        return;
-    }
-    
-    console.log("NPC speaking:", text);
-    npcSpeaking = true;
+            // Don't allow speech if already speaking
+            if (npcSpeaking) {
+                console.log("NPC is already speaking, ignoring new speech request");
+                return;
+            }
+            
+            npcSpeaking = true;
 
-    // Check if we have a pre-recorded audio for this phrase
-    const audioFile = preloadedPhrases[text];
+            // Check if we have a pre-recorded audio for this phrase
+            const audioFile = preloadedPhrases[text];
 
-    // Show text in appropriate speech bubble
-    if (renderer && renderer.xr && renderer.xr.isPresenting) {
-        if (vrSpeechBubble) {
-            updateVRSpeechBubble(text);
-        } else {
-            console.warn("VR speech bubble not initialized");
-        }
-    } else {
-        showSpeechBubble(text);
-    }
+            // Show text in appropriate speech bubble
+            if (renderer && renderer.xr.isPresenting) {
+                updateVRSpeechBubble(text);
+            } else {
+                showSpeechBubble(text);
+            }
 
-    // Select animation based on speech content
-    let animationCategory = 'talking';
-    
-    // Check text content for contextual animation selection
-    const lowerText = text.toLowerCase();
+            // Select animation based on speech content
+            let animationCategory = 'talking';
 
-    // Animation selection logic (unchanged)
-    if (lowerText.includes('hello') || lowerText.includes('welcome') || 
-        lowerText.includes('hi there') || lowerText.startsWith('hi')) {
-        animationCategory = 'greeting';
-    } else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
-        lowerText.includes('see you') || lowerText.includes('thank')) {
-        animationCategory = 'greeting';
-    } else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
-        lowerText.includes("sorry") || lowerText.includes("can't help") ||
-        lowerText.includes("didn't catch what you said") || 
-        lowerText.includes("didn't quite understand") ||
-        lowerText.includes("i apologize")) {
-        animationCategory = 'error';
-        applyUncertaintyExpression();
-    } else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
-        lowerText.includes("correct") || lowerText.includes("certainly") ||
-        lowerText.includes("of course") || lowerText.includes("sure") ||
-        lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
-        animationCategory = 'affirmative';
-    } else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
-        lowerText.includes("can't") || lowerText.includes("won't") ||
-        lowerText.includes("don't have that information") || text === "I can't help with that.") {
-        animationCategory = 'negative';
-    }
-    
-    // Play the appropriate animation
-    playAnimationByCategory(animationCategory);
-    
-    // If we have a pre-recorded audio file, use it
+// Check text content for contextual animation selection
+const lowerText = text.toLowerCase();
+
+// Greeting animations
+if (lowerText.includes('hello') || lowerText.includes('welcome') || 
+    lowerText.includes('hi there') || lowerText.startsWith('hi')) {
+    animationCategory = 'greeting';
+}
+// Goodbye animations
+else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
+         lowerText.includes('see you') || lowerText.includes('thank')) {
+    animationCategory = 'greeting'; // Wave for goodbyes too
+}
+// Error/uncertainty/shrug animations
+else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
+         lowerText.includes("sorry") || lowerText.includes("can't help") ||
+         lowerText.includes("didn't catch what you said") || 
+         lowerText.includes("didn't quite understand") ||
+         lowerText.includes("i apologize")) {
+    animationCategory = 'error';  // This will use the shrug animation
+    applyUncertaintyExpression();
+}
+// Affirmative/yes animations
+else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
+         lowerText.includes("correct") || lowerText.includes("certainly") ||
+         lowerText.includes("of course") || lowerText.includes("sure") ||
+         lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
+    animationCategory = 'affirmative';  // This will use the yes animation
+}
+// Negative/no animations
+else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
+         lowerText.includes("can't") || lowerText.includes("won't") ||
+         lowerText.includes("don't have that information") || text === "I can't help with that.") {
+    animationCategory = 'negative';  // This will use the no animation
+}
+            
+            // Play the appropriate animation
+            playAnimationByCategory(animationCategory);
+            
+            // If we have a pre-recorded audio file, use it
     if (audioFile) {
         console.log(`Playing pre-recorded audio: ${audioFile}`);
         
-        try {
-            // Create a fresh Audio object each time
-            const audio = new Audio(`./audio-cache/${audioFile}`);
+        // Play the audio file
+        const audio = new Audio(`./audio-cache/${audioFile}`);
+        
+        // Set up audio callbacks
+        audio.oncanplaythrough = () => {
+            // Start lip sync
+            startLipSync(text);
+        };
+        
+        audio.onended = () => {
+            // Reset NPC state
+            npcSpeaking = false;
+            stopLipSync();
+            resetUncertaintyExpression();
             
-            // Set up audio callbacks
-            audio.oncanplaythrough = () => {
-                console.log("Audio can play through, starting lip sync");
-                // Start lip sync
-                startLipSync(text);
-            };
+            if (renderer && renderer.xr.isPresenting) {
+                vrSpeechBubble.visible = false;
+            } else {
+                speechBubble.style.display = 'none';
+            }
             
-            audio.onended = () => {
-                console.log("Audio playback ended");
-                // Reset NPC state
-                npcSpeaking = false;
-                stopLipSync();
-                resetUncertaintyExpression();
-                
-                if (renderer && renderer.xr && renderer.xr.isPresenting) {
-                    if (vrSpeechBubble) vrSpeechBubble.visible = false;
-                } else {
-                    const speechBubble = document.getElementById('speechBubble');
-                    if (speechBubble) speechBubble.style.display = 'none';
-                }
-                
-                // Return to idle animation if not moving
-                if (!npcMoving) {
-                    playAnimationByCategory('idle');
-                }
-            };
-            
-            audio.onerror = (e) => {
-                console.error("Audio file playback error:", e);
-                // Fall back to text only
-                generateEnhancedLipSync(text, text.length * 0.1);
-                handleTextOnlySpeech(text);
-            };
-            
-            // Try to play the audio with better error handling
-            audio.play().catch(error => {
-                console.error("Error playing audio:", error);
-                // Fall back to text only
-                handleTextOnlySpeech(text);
-            });
-        } catch (err) {
-            console.error("Error setting up audio playback:", err);
+            // Return to idle animation if not moving
+            if (!npcMoving) {
+                playAnimationByCategory('idle');
+            }
+        };
+        
+        audio.onerror = (e) => {
+            console.error("Audio file playback error:", e);
+            // Fall back to text only
+            generateEnhancedLipSync(text, text.length * 0.1);
             handleTextOnlySpeech(text);
-        }
+        };
+        
+        // Try to play the audio
+        audio.play().catch(error => {
+            console.error("Error playing audio:", error);
+            // Fall back to text only
+            handleTextOnlySpeech(text);
+        });
     } else {
         // No audio file available - use text only
         handleTextOnlySpeech(text);
@@ -2935,10 +2859,9 @@ function handleTextOnlySpeech(text) {
     setTimeout(() => {
         // Hide speech bubble
         if (renderer && renderer.xr.isPresenting) {
-            if (vrSpeechBubble) vrSpeechBubble.visible = false;
+            vrSpeechBubble.visible = false;
         } else {
-            const speechBubble = document.getElementById('speechBubble');
-            if (speechBubble) speechBubble.style.display = 'none';
+            speechBubble.style.display = 'none';
         }
         
         // Reset speaking flag
@@ -2948,8 +2871,6 @@ function handleTextOnlySpeech(text) {
         
         // Return to idle animation
         playAnimationByCategory('idle');
-        
-        console.log('Speech completed, bubble hidden');
     }, speakingDuration);
 }
 
@@ -3171,104 +3092,51 @@ function resetUncertaintyExpression() {
         function updateVRSpeechBubble(text) {
     if (!vrSpeechBubble || !vrSpeechBubble.userData) return;
     
-    // Force visibility at the start of function
-    vrSpeechBubble.visible = true;
-    
-    const { canvas, context, texture } = vrSpeechBubble.userData;
-    const pages = splitTextIntoPages(text, 80); // Fewer chars per page for VR readability
-    
-    // Store page information in userData for persistence between frames
-    vrSpeechBubble.userData.pages = pages;
-    vrSpeechBubble.userData.currentPageIndex = 0;
-    vrSpeechBubble.userData.startTime = performance.now();
-    
-    // Initial display of first page
-    displayPage(0);
-    
-    function displayPage(pageIndex) {
-    // Early exit if missing required objects
-    if (!vrSpeechBubble || !vrSpeechBubble.userData || !vrSpeechBubble.userData.pages) {
-        console.warn("Cannot display page - missing speech bubble or page data");
-        return;
-    }
-    
-    const { canvas, context, texture } = vrSpeechBubble.userData;
-    const pages = vrSpeechBubble.userData.pages;
-    
-    if (pageIndex >= pages.length) {
-        // We've shown all pages, hide the bubble
-        vrSpeechBubble.visible = false;
-        return;
-    }
-    
-    // Clear canvas
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    
-    // Draw white background with rounded corners
-    context.fillStyle = 'white';
-    roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
-    
-    // Get the text for current page
-    const pageText = pages[pageIndex];
-    const isLastPage = pageIndex === pages.length - 1;
-    
-    // Set up text properties
-    context.font = 'bold 32px Arial, Helvetica, sans-serif';
-    context.fillStyle = 'black';
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    
-    // Handle multi-line text within this page
-    const words = pageText.split(' ');
-    let lines = [];
-    let currentLine = words[0] || '';
-    
-    for (let i = 1; i < words.length; i++) {
-        const testLine = currentLine + ' ' + words[i];
-        const metrics = context.measureText(testLine);
-        if (metrics.width > canvas.width - 60) {
-            lines.push(currentLine);
-            currentLine = words[i];
-        } else {
-            currentLine = testLine;
-        }
-    }
-    lines.push(currentLine);
-    
-    // Draw text lines
-    const lineHeight = 40;
-    const startY = (canvas.height - (lines.length * lineHeight)) / 2;
-    
-    lines.forEach((line, index) => {
-        context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
-    });
-    
-    // Add page indicator for multi-page bubbles
-    if (pages.length > 1) {
-        context.font = '24px Arial';
-        context.fillStyle = '#666666';
-        context.fillText(`${pageIndex+1}/${pages.length}`, canvas.width - 50, canvas.height - 30);
+    try {
+        const { canvas, context, texture } = vrSpeechBubble.userData;
         
-        // Add next page indicator if not the last page
-        if (!isLastPage) {
-            context.fillStyle = '#000000';
-            context.fillText('▼', canvas.width / 2, canvas.height - 30);
+        // Clear canvas
+        context.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw white background with rounded corners
+        context.fillStyle = 'white';
+        roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
+        
+        // Set up text properties
+        context.font = 'bold 32px Arial, Helvetica, sans-serif';
+        context.fillStyle = 'black';
+        context.textAlign = 'center';
+        context.textBaseline = 'middle';
+        
+        // Handle multi-line text
+        const words = text.split(' ');
+        let lines = [];
+        let currentLine = words[0];
+        
+        for (let i = 1; i < words.length; i++) {
+            const testLine = currentLine + ' ' + words[i];
+            const metrics = context.measureText(testLine);
+            if (metrics.width > canvas.width - 60) {
+                lines.push(currentLine);
+                currentLine = words[i];
+            } else {
+                currentLine = testLine;
+            }
         }
-    }
-    
-    // Update texture
-    texture.needsUpdate = true;
-    
-    // Calculate duration based on text length (longer for more text)
-    const pageDuration = Math.max(3000, pageText.length * 70);
-    
-    // Store next page time
-    vrSpeechBubble.userData.nextPageTime = performance.now() + pageDuration;
-    vrSpeechBubble.userData.currentPageIndex = pageIndex;
-}
-
-
-    function positionVRSpeechBubble() {
+        lines.push(currentLine);
+        
+        // Draw text lines
+        const lineHeight = 40;
+        const startY = (canvas.height - (lines.length * lineHeight)) / 2;
+        
+        lines.forEach((line, index) => {
+            context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
+        });
+        
+        // Update texture
+        texture.needsUpdate = true;
+        
+        // Position above NPC's head if we have an NPC avatar
         if (npcAvatar) {
             try {
                 // Force matrix update to ensure correct position
@@ -3280,28 +3148,22 @@ function resetUncertaintyExpression() {
                 
                 // Position speech bubble above head
                 vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
-                
-              
             } catch (err) {
                 console.error('Error positioning speech bubble:', err);
-                // Fallback positioning
+                // Fallback positioning if we can't get the avatar position
                 vrSpeechBubble.position.set(0, 2, -2);
             }
         } else {
             // Default position if no avatar
             vrSpeechBubble.position.set(0, 2, -2);
         }
+        
+        // Show the speech bubble
+        vrSpeechBubble.visible = true;
+    } catch (error) {
+        console.error('Error updating VR speech bubble:', error);
     }
-    
-    // Get current page text
-    const pageText = pages[currentPageIndex];
-    const isLastPage = currentPageIndex === pages.length - 1;
-    
-    // THIS WAS MISSING: Actually call the functions we define
-    displayCurrentPage();
 }
-
-   
 
         // Helper function to draw rounded rectangle
         function roundRect(ctx, x, y, width, height, radius, fill) {
@@ -4157,11 +4019,11 @@ function easeInOutCubic(t) {
    
 
         // Update NPC movement to follow user
-        function updateNPCMovement() {
+    function updateNPCMovement() {
     // Only proceed if we have all required objects
     if (!npcAvatar || !renderer || !renderer.xr || !cameraRig) return;
     
-    if (renderer.xr.isPresenting) {
+    if (!npcSpeaking && renderer.xr.isPresenting) {
         // Make NPC look at player - with null checks
         const npcPosition = new THREE.Vector3();
         const userPosition = new THREE.Vector3();
@@ -4170,31 +4032,8 @@ function easeInOutCubic(t) {
             npcAvatar.getWorldPosition(npcPosition);
             cameraRig.getWorldPosition(userPosition);
             
-            // Calculate direction for facing
-            const faceDir = new THREE.Vector3();
-            faceDir.subVectors(userPosition, npcPosition).normalize();
-            faceDir.y = 0; // Keep on xz plane
-            
-            // Don't rotate if NPC is actively speaking or performing a specific animation
-            if (!npcMoving && faceDir.length() > 0) {
-                // Calculate rotation to face player
-                const targetRotation = Math.atan2(faceDir.x, faceDir.z);
-                
-                // Calculate angle difference to determine if rotation is needed
-                let angleDiff = targetRotation - npcAvatar.rotation.y;
-                // Normalize angle to -PI to PI range
-                angleDiff = ((angleDiff + Math.PI) % (Math.PI * 2)) - Math.PI;
-                
-                // Only rotate if the angle difference is significant
-                if (Math.abs(angleDiff) > 0.1) { // About 5.7 degrees
-                    // Apply rotation with a small interpolation for smoother turning
-                    npcAvatar.rotation.y = THREE.MathUtils.lerp(
-                        npcAvatar.rotation.y,
-                        targetRotation,
-                        0.05 // Lower value for smoother turning
-                    );
-                }
-            }
+            // Only rotate head/eyes, not full body unless moving
+            // Eye tracking is handled separately
         } catch (error) {
             console.error('Error updating NPC movement:', error);
         }
@@ -4273,56 +4112,30 @@ function easeInOutCubic(t) {
 
 
 function sayGoodbye() {
-    // Disable exit button during goodbye sequence
-    const exitButton = window.exitButton;
-    if (exitButton) {
-        exitButton.userData.disabled = true;
-        if (exitButton.material) {
-            exitButton.material.color.setHex(0x888888); // Gray out button
-        }
-    }
-
-    // Flag to track if we're in goodbye sequence
-    window.inGoodbyeSequence = true;
-    
-    // Play goodbye animation first
-    playAnimationByCategory('greeting');
-    
-    // Play goodbye message with longer delay before exit
+    // Play goodbye message
     playAudioFile("thanks-for-visiting-goodbye-.mp3")
-        .then((duration) => {
-            console.log("Goodbye message completed, duration:", duration);
-            
-            // Get actual audio duration or use default
-            const goodbyeDuration = duration || 3.0;
-            
-            // Exit VR session after audio completes + animation buffer time
+        .then(() => {
+            console.log("Goodbye message completed");
+            // Exit VR session after a short delay
             setTimeout(() => {
                 if (renderer && renderer.xr.isPresenting) {
-                    console.log("Goodbye sequence complete, exiting VR");
                     renderer.xr.getSession().end();
                 }
-                window.inGoodbyeSequence = false;
-            }, (goodbyeDuration * 1000) + 500); // Full audio duration + 0.5s buffer
+            }, 500);
         })
         .catch(err => {
             console.error("Failed to play goodbye audio:", err);
+            // Fallback to TTS
+            npcSpeak("Thanks for visiting. Goodbye.");
             
-            // Fallback to TTS with longer delay
-            npcSpeak("Thanks for visiting. Goodbye!");
-            
-            // Wait longer for TTS and animation
+            // Exit VR session after a short delay
             setTimeout(() => {
                 if (renderer && renderer.xr.isPresenting) {
-                    console.log("Goodbye sequence complete (fallback), exiting VR");
                     renderer.xr.getSession().end();
                 }
-                window.inGoodbyeSequence = false;
-            }, 1500); // 1.5 seconds is enough for short goodbye message + animation
+            }, 2000);
         });
 }
-
-
 
 
         // Handle VR session end
@@ -4357,11 +4170,6 @@ function sayGoodbye() {
     if (npcMovementTimeout) {
         clearTimeout(npcMovementTimeout);
     }
-
-    setTimeout(() => {
-        window.location.reload();
-    }, 500);
-
 }
 
         // Window resize handler
@@ -4418,71 +4226,6 @@ function sayGoodbye() {
                       
         }
 
-        if (vrSpeechBubble && vrSpeechBubble.visible && vrSpeechBubble.userData.pages) {
-    // Check if it's time to advance to the next page
-    const now = performance.now();
-    if (now > vrSpeechBubble.userData.nextPageTime) {
-        const nextPage = vrSpeechBubble.userData.currentPageIndex + 1;
-        if (nextPage >= vrSpeechBubble.userData.pages.length) {
-            // We've shown all pages, hide the bubble
-            vrSpeechBubble.visible = false;
-        } else {
-            // Advance to next page
-            displayPage(nextPage);
-        }
-    }
-}
-
-        // Update speech bubble position and rotation to match NPC, regardless of visibility
-        if (vrSpeechBubble && npcAvatar && camera) {
-            try {
-        // Update position to follow NPC's head
-        const headPosition = new THREE.Vector3(0, 1.7, 0);
-        headPosition.applyMatrix4(npcAvatar.matrixWorld);
-        vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
-        
-        // Get player position
-        const userPosition = new THREE.Vector3();
-        camera.getWorldPosition(userPosition);
-        
-        // Calculate direction from speech bubble to player
-        const toPlayer = new THREE.Vector3().subVectors(userPosition, vrSpeechBubble.position).normalize();
-        
-        // Use lookAt to create a rotation matrix facing the player
-        const lookMatrix = new THREE.Matrix4();
-        lookMatrix.lookAt(
-            new THREE.Vector3(0, 0, 0), // origin
-            toPlayer,                   // direction to player
-            new THREE.Vector3(0, 1, 0)  // up vector
-        );
-        
-        // Extract the rotation from the matrix
-        const rotation = new THREE.Quaternion();
-        rotation.setFromRotationMatrix(lookMatrix);
-
-         // This is the key fix: apply 180-degree rotation around Y-axis
-         const flipRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI);
-        rotation.multiply(flipRotation);
-
-        vrSpeechBubble.quaternion.copy(rotation);
-        
-        // Now add a tilt that's relative to the direction we're facing
-        // This ensures the tilt is always toward the player regardless of orientation
-        vrSpeechBubble.rotateX(0.2);
-        
-        // Force visibility if NPC is speaking
-        if (npcSpeaking) {
-            vrSpeechBubble.visible = true;
-        }
-    } catch (err) {
-        console.error('Error updating speech bubble rotation:', err);
-    }
-}
-
-
-        // Update NPC movement to ensure NPC faces the user
-        updateNPCMovement();
-
         checkModelProximity();
 
         // Update volume visualization - with null checks
@@ -4511,7 +4254,10 @@ function sayGoodbye() {
     volumeIndicator.material.emissiveIntensity = 0.5 + intensity;
 }
         
-      
+        // Make VR speech bubble face the camera - with null check
+        if (vrSpeechBubble && vrSpeechBubble.visible && camera) {
+            vrSpeechBubble.lookAt(camera.position);
+        }
         
         // Update animation mixers if available
         if (npcMixer) {
