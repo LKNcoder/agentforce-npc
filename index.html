@@ -2721,20 +2721,78 @@ function createMicIndicator() {
 
 
 
-
+// Helper function to split text into pages
+function splitTextIntoPages(text, maxCharsPerPage = 100) {
+    if (text.length <= maxCharsPerPage) {
+        return [text];
+    }
+    
+    const pages = [];
+    let currentPage = "";
+    const words = text.split(' ');
+    
+    for (const word of words) {
+        // Check if adding this word would exceed the limit
+        if ((currentPage + word).length > maxCharsPerPage && currentPage.length > 0) {
+            // Current page is full, start a new one
+            pages.push(currentPage.trim());
+            currentPage = word + " ";
+        } else {
+            currentPage += word + " ";
+        }
+    }
+    
+    // Add the last page if there's anything left
+    if (currentPage.trim().length > 0) {
+        pages.push(currentPage.trim());
+    }
+    
+    return pages;
+}
 
         // Show speech bubble
         function showSpeechBubble(text) {
-            speechBubble = document.getElementById('speechBubble');
-            speechBubble.textContent = text;
-            speechBubble.style.display = 'block';
-            
-            // Hide speech bubble after a delay
-            setTimeout(() => {
-                speechBubble.style.display = 'none';
-            }, text.length * 100 + 2000); // Duration based on text length
+    const speechBubble = document.getElementById('speechBubble');
+    const pages = splitTextIntoPages(text);
+    let currentPageIndex = 0;
+    
+    function displayCurrentPage() {
+        if (currentPageIndex >= pages.length) {
+            // We've shown all pages, hide the bubble
+            speechBubble.style.display = 'none';
+            return;
         }
         
+        const pageText = pages[currentPageIndex];
+        const isLastPage = currentPageIndex === pages.length - 1;
+        
+        // Show page counter for multi-page bubbles
+        const pageIndicator = pages.length > 1 ? 
+            `<div style="font-size:0.8em;color:#666;text-align:right">${currentPageIndex+1}/${pages.length}</div>` : '';
+        
+        // Add next page indicator if not the last page
+        const nextPageIndicator = !isLastPage ? 
+            '<div style="text-align:center;margin-top:5px">▼</div>' : '';
+        
+        speechBubble.innerHTML = pageText + nextPageIndicator + pageIndicator;
+        speechBubble.style.display = 'block';
+        
+        // Calculate duration based on text length (longer for more text)
+        const pageDuration = Math.max(2000, pageText.length * 50);
+        
+        // Move to next page after duration
+        setTimeout(() => {
+            currentPageIndex++;
+            displayCurrentPage();
+        }, pageDuration);
+    }
+    
+    // Start displaying pages
+    displayCurrentPage();
+}
+        
+
+
         // NPC speak with text
         function npcSpeak(text) {
             // Don't allow speech if already speaking
@@ -3089,11 +3147,22 @@ function resetUncertaintyExpression() {
         }
 
         // Update text on VR speech bubble
-        function updateVRSpeechBubble(text) {
+    function updateVRSpeechBubble(text) {
     if (!vrSpeechBubble || !vrSpeechBubble.userData) return;
     
-    try {
-        const { canvas, context, texture } = vrSpeechBubble.userData;
+    const { canvas, context, texture } = vrSpeechBubble.userData;
+    const pages = splitTextIntoPages(text, 80); // Fewer chars per page for VR readability
+    let currentPageIndex = 0;
+    
+    function displayCurrentPage() {
+        if (currentPageIndex >= pages.length) {
+            // We've shown all pages, hide the bubble
+            vrSpeechBubble.visible = false;
+            return;
+        }
+        
+        const pageText = pages[currentPageIndex];
+        const isLastPage = currentPageIndex === pages.length - 1;
         
         // Clear canvas
         context.clearRect(0, 0, canvas.width, canvas.height);
@@ -3108,8 +3177,8 @@ function resetUncertaintyExpression() {
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         
-        // Handle multi-line text
-        const words = text.split(' ');
+        // Handle multi-line text within this page
+        const words = pageText.split(' ');
         let lines = [];
         let currentLine = words[0];
         
@@ -3133,10 +3202,39 @@ function resetUncertaintyExpression() {
             context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
         });
         
+        // Add page indicator for multi-page bubbles
+        if (pages.length > 1) {
+            context.font = '24px Arial';
+            context.fillStyle = '#666666';
+            context.fillText(`${currentPageIndex+1}/${pages.length}`, canvas.width - 50, canvas.height - 30);
+            
+            // Add next page indicator if not the last page
+            if (!isLastPage) {
+                context.fillStyle = '#000000';
+                context.fillText('▼', canvas.width / 2, canvas.height - 30);
+            }
+        }
+        
         // Update texture
         texture.needsUpdate = true;
         
-        // Position above NPC's head if we have an NPC avatar
+        // Position bubble above NPC
+        positionVRSpeechBubble();
+        
+        // Show the speech bubble
+        vrSpeechBubble.visible = true;
+        
+        // Calculate duration based on text length (longer for more text)
+        const pageDuration = Math.max(3000, pageText.length * 70);
+        
+        // Move to next page after duration
+        setTimeout(() => {
+            currentPageIndex++;
+            displayCurrentPage();
+        }, pageDuration);
+    }
+
+    function positionVRSpeechBubble() {
         if (npcAvatar) {
             try {
                 // Force matrix update to ensure correct position
@@ -3150,19 +3248,17 @@ function resetUncertaintyExpression() {
                 vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
             } catch (err) {
                 console.error('Error positioning speech bubble:', err);
-                // Fallback positioning if we can't get the avatar position
+                // Fallback positioning
                 vrSpeechBubble.position.set(0, 2, -2);
             }
         } else {
             // Default position if no avatar
             vrSpeechBubble.position.set(0, 2, -2);
         }
-        
-        // Show the speech bubble
-        vrSpeechBubble.visible = true;
-    } catch (error) {
-        console.error('Error updating VR speech bubble:', error);
     }
+    
+    // Start displaying pages
+    displayCurrentPage();
 }
 
         // Helper function to draw rounded rectangle
