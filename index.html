@@ -919,6 +919,11 @@ body.vr-active canvas {
         let elevenLabsTTSCache = {}; // Cache for API responses
         let useElevenLabs = true; // Flag to enable/disable ElevenLabs
         let currentVoiceId = "AZnzlk1XvdvUeBnXmlld"; // Default voice ID
+        let recordingInterval = null;
+        let recordingDuration = 3000; // Record 3 seconds at a time
+        let isRecordingForSTT = false;
+        
+        let elSTTEndpoint = 'https://api.elevenlabs.io/v1/speech-to-text';
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -2350,62 +2355,163 @@ function replaceModelWithPinkVersion() {
 
         // Set up speech recognition
         function setupSpeechRecognition() {
-    // Set up Web Speech API if available
-    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-        recognition.continuous = true; // Make it continuous
-        recognition.interimResults = false;
-        recognition.lang = 'en-US';
+    console.log('Setting up ElevenLabs STT');
+    
+    // Don't need to initialize recognition object since we're replacing it
+    
+    if (!window.microphoneStream) {
+        console.warn('Microphone not available for ElevenLabs STT');
+        return;
+    }
+    
+    // Check if we have ElevenLabs API key
+    if (!elevenLabsApiKey) {
+        console.warn('ElevenLabs API key not set, cannot use STT');
+        return;
+    }
+    
+    // Set up MediaRecorder to capture audio
+    setupElevenLabsSTTRecording();
+}
+
+// New function for ElevenLabs STT recording
+function setupElevenLabsSTTRecording() {
+    // Clear any existing recorder
+    stopElevenLabsRecording();
+    
+    try {
+        // Create a MediaRecorder instance for the microphone stream
+        mediaRecorder = new MediaRecorder(window.microphoneStream, {
+            mimeType: 'audio/webm',  // Compatible format for ElevenLabs
+            audioBitsPerSecond: 16000 // ElevenLabs prefers 16kHz
+        });
         
-        recognition.onresult = function(event) {
-            // Get the last result
-            const lastResultIndex = event.results.length - 1;
-            const transcript = event.results[lastResultIndex][0].transcript;
-            handleUserSpeech(transcript);
-        };
-        
-        recognition.onend = function() {
-            // Auto restart if it ends
-            console.log('Speech recognition ended, restarting...');
-            try {
-                recognition.start();
-                isListening = true;
-            } catch (e) {
-                console.warn('Could not restart speech recognition:', e);
+        // Handle data available
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
             }
         };
         
-        recognition.onerror = function(event) {
-            console.error('Speech recognition error:', event.error);
-            isListening = false;
+        // When recording stops, send to ElevenLabs
+        mediaRecorder.onstop = () => {
+            if (audioChunks.length === 0) return;
             
-            // Try to restart after a brief delay
-            setTimeout(() => {
-                try {
-                    recognition.start();
-                    isListening = true;
-                } catch (e) {
-                    console.warn('Could not restart speech recognition after error:', e);
-                }
-            }, 2000);
+            // Convert chunks to blob
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            
+            // Reset chunks for next recording
+            audioChunks = [];
+            
+            // Only send to ElevenLabs if blob is not empty
+            if (audioBlob.size > 0) {
+                sendAudioToElevenLabs(audioBlob);
+            }
+            
+            // If continuous recording is enabled, start a new recording
+            if (isRecordingForSTT) {
+                mediaRecorder.start();
+            }
         };
         
-        // Auto-start in VR
-        if (renderer && renderer.xr && renderer.xr.isPresenting) {
-            try {
-                recognition.start();
-                isListening = true;
-                console.log('Speech recognition auto-started in VR');
-            } catch (e) {
-                console.warn('Could not auto-start speech recognition:', e);
-            }
-        }
-    } else {
-        console.warn('Speech recognition not supported in this browser');
-        // Use non-blocking notification instead of alert
-        showTemporaryNotification('Speech recognition not supported in your browser. Voice interactions will be limited.');
+        // Start recording
+        startContinuousRecording();
+        console.log('ElevenLabs STT recording initialized');
+    } catch (error) {
+        console.error('Failed to initialize MediaRecorder:', error);
     }
 }
+
+// Function to start continuous recording
+function startContinuousRecording() {
+    if (!mediaRecorder) return;
+    
+    isRecordingForSTT = true;
+    
+    // Start initial recording
+    mediaRecorder.start();
+    console.log('Started recording for ElevenLabs STT');
+    
+    // Set up interval to stop/restart recording periodically
+    recordingInterval = setInterval(() => {
+        if (mediaRecorder.state === 'recording') {
+            mediaRecorder.stop();
+            // MediaRecorder.onstop will handle restarting
+        }
+    }, recordingDuration);
+}
+
+// Function to stop recording
+function stopElevenLabsRecording() {
+    isRecordingForSTT = false;
+    
+    if (recordingInterval) {
+        clearInterval(recordingInterval);
+        recordingInterval = null;
+    }
+    
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+    }
+    
+    // Clear any pending chunks
+    audioChunks = [];
+}
+
+// Function to send audio to ElevenLabs API
+async function sendAudioToElevenLabs(audioBlob) {
+    // Show a small visual indicator that we're processing
+    if (volumeIndicator) {
+        volumeIndicator.material.emissive.setRGB(1, 0.5, 0); // Orange when processing
+    }
+    
+    try {
+        // Create form data
+        const formData = new FormData();
+        formData.append('audio', audioBlob);
+        
+        // Send to ElevenLabs API
+        const response = await fetch(elSTTEndpoint, {
+            method: 'POST',
+            headers: {
+                'xi-api-key': elevenLabsApiKey
+                // Content-Type is set automatically by FormData
+            },
+            body: formData
+        });
+        
+        // Reset indicator
+        if (volumeIndicator) {
+            volumeIndicator.material.emissive.setRGB(0, 1, 0); // Back to green
+        }
+        
+        if (!response.ok) {
+            throw new Error(`ElevenLabs API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.text && data.text.trim() !== '') {
+            console.log('ElevenLabs STT result:', data.text);
+            
+            // Process speech the same way as Web Speech API would
+            handleUserSpeech(data.text);
+        }
+    } catch (error) {
+        console.error('Error with ElevenLabs STT:', error);
+        
+        // Reset indicator to show error
+        if (volumeIndicator) {
+            volumeIndicator.material.emissive.setRGB(1, 0, 0); // Red for error
+            setTimeout(() => {
+                volumeIndicator.material.emissive.setRGB(0, 1, 0); // Back to green
+            }, 1000);
+        }
+    }
+}
+
+
+
 
         // Handle user speech
     function handleUserSpeech(text) {
@@ -3969,7 +4075,7 @@ function easeInOutCubic(t) {
 }
 
         // Handle VR session start
-        function handleVRSessionStart() {
+    function handleVRSessionStart() {
     console.log('VR session started');
 
     // Initialize audio context immediately after user interaction
@@ -3985,18 +4091,13 @@ function easeInOutCubic(t) {
         console.log('Ambient bird sounds started');
     }
     
-    // Make sure speech recognition is running
-    if (recognition && !isListening) {
-        try {
-            recognition.start();
-            isListening = true;
-            console.log('Speech recognition started in VR session');
-        } catch (e) {
-            console.warn('Could not start speech recognition in VR session:', e);
-        }
+   // Make sure ElevenLabs STT is running
+   if (window.microphoneStream && !isRecordingForSTT) {
+        setupElevenLabsSTTRecording();
+        console.log('ElevenLabs STT recording started in VR session');
     }
     
-    // Rest of your existing code...
+    
     
     // Place NPC a comfortable distance in front of the user
     if (npcAvatar) {
@@ -4070,6 +4171,9 @@ function sayGoodbye() {
     function handleVRSessionEnd() {
     console.log('VR session ended');
     
+// Stop ElevenLabs STT recording
+stopElevenLabsRecording();
+
     // Remove VR active class from body
     document.body.classList.remove('vr-active');
     
