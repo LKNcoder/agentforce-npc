@@ -4396,10 +4396,7 @@ function sayGoodbye() {
     volumeIndicator.material.emissiveIntensity = 0.5 + intensity;
 }
         
-        // Make VR speech bubble face the camera - with null check
-        if (vrSpeechBubble && vrSpeechBubble.visible && camera) {
-            vrSpeechBubble.lookAt(camera.position);
-        }
+      
         
         // Update animation mixers if available
         if (npcMixer) {
