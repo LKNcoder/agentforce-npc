@@ -3149,6 +3149,9 @@ function resetUncertaintyExpression() {
         // Update text on VR speech bubble
     function updateVRSpeechBubble(text) {
     if (!vrSpeechBubble || !vrSpeechBubble.userData) return;
+
+       // Force visibility at the start of function
+       vrSpeechBubble.visible = true;
     
     const { canvas, context, texture } = vrSpeechBubble.userData;
     const pages = splitTextIntoPages(text, 80); // Fewer chars per page for VR readability
@@ -4232,30 +4235,56 @@ function easeInOutCubic(t) {
 
 
 function sayGoodbye() {
-    // Play goodbye message
+    // Disable exit button during goodbye sequence
+    const exitButton = window.exitButton;
+    if (exitButton) {
+        exitButton.userData.disabled = true;
+        if (exitButton.material) {
+            exitButton.material.color.setHex(0x888888); // Gray out button
+        }
+    }
+
+    // Flag to track if we're in goodbye sequence
+    window.inGoodbyeSequence = true;
+    
+    // Play goodbye animation first
+    playAnimationByCategory('greeting');
+    
+    // Play goodbye message with longer delay before exit
     playAudioFile("thanks-for-visiting-goodbye-.mp3")
-        .then(() => {
-            console.log("Goodbye message completed");
-            // Exit VR session after a short delay
+        .then((duration) => {
+            console.log("Goodbye message completed, duration:", duration);
+            
+            // Get actual audio duration or use default
+            const goodbyeDuration = duration || 3.0;
+            
+            // Exit VR session after audio completes + animation buffer time
             setTimeout(() => {
                 if (renderer && renderer.xr.isPresenting) {
+                    console.log("Goodbye sequence complete, exiting VR");
                     renderer.xr.getSession().end();
                 }
-            }, 500);
+                window.inGoodbyeSequence = false;
+            }, (goodbyeDuration * 1000) + 1500); // Full audio duration + 1.5s buffer
         })
         .catch(err => {
             console.error("Failed to play goodbye audio:", err);
-            // Fallback to TTS
-            npcSpeak("Thanks for visiting. Goodbye.");
             
-            // Exit VR session after a short delay
+            // Fallback to TTS with longer delay
+            npcSpeak("Thanks for visiting. Goodbye!");
+            
+            // Wait longer for TTS and animation
             setTimeout(() => {
                 if (renderer && renderer.xr.isPresenting) {
+                    console.log("Goodbye sequence complete (fallback), exiting VR");
                     renderer.xr.getSession().end();
                 }
-            }, 2000);
+                window.inGoodbyeSequence = false;
+            }, 4500); // 4.5 seconds is enough for short goodbye message + animation
         });
 }
+
+
 
 
         // Handle VR session end
@@ -4351,8 +4380,8 @@ function sayGoodbye() {
                       
         }
 
-         // Update speech bubble position and rotation to match NPC
-         if (vrSpeechBubble && vrSpeechBubble.visible && npcAvatar) {
+        // Update speech bubble position and rotation to match NPC, regardless of visibility
+        if (vrSpeechBubble && npcAvatar) {
             // Update position to follow NPC's head
             const headPosition = new THREE.Vector3(0, 1.7, 0);
             headPosition.applyMatrix4(npcAvatar.matrixWorld);
@@ -4363,6 +4392,11 @@ function sayGoodbye() {
             
             // Add a slight tilt so it's easier to read
             vrSpeechBubble.rotation.x = 0.2;
+            
+            // Force visibility if NPC is speaking
+            if (npcSpeaking) {
+                vrSpeechBubble.visible = true;
+            }
         }
 
         // Update NPC movement to ensure NPC faces the user
