@@ -3163,11 +3163,11 @@ function resetUncertaintyExpression() {
         }
 
         // Update text on VR speech bubble
-    function updateVRSpeechBubble(text) {
+        function updateVRSpeechBubble(text) {
     if (!vrSpeechBubble || !vrSpeechBubble.userData) return;
-
-       // Force visibility at the start of function
-       vrSpeechBubble.visible = true;
+    
+    // Force visibility at the start of function
+    vrSpeechBubble.visible = true;
     
     const { canvas, context, texture } = vrSpeechBubble.userData;
     const pages = splitTextIntoPages(text, 80); // Fewer chars per page for VR readability
@@ -3179,9 +3179,6 @@ function resetUncertaintyExpression() {
             vrSpeechBubble.visible = false;
             return;
         }
-        
-        const pageText = pages[currentPageIndex];
-        const isLastPage = currentPageIndex === pages.length - 1;
         
         // Clear canvas
         context.clearRect(0, 0, canvas.width, canvas.height);
@@ -3240,9 +3237,6 @@ function resetUncertaintyExpression() {
         // Position bubble above NPC
         positionVRSpeechBubble();
         
-        // Show the speech bubble
-        vrSpeechBubble.visible = true;
-        
         // Calculate duration based on text length (longer for more text)
         const pageDuration = Math.max(3000, pageText.length * 70);
         
@@ -3254,32 +3248,45 @@ function resetUncertaintyExpression() {
     }
 
     function positionVRSpeechBubble() {
-    if (npcAvatar) {
-        try {
-            // Force matrix update to ensure correct position
-            npcAvatar.updateWorldMatrix(true, false);
-            
-            // Get NPC head position
-            const headPosition = new THREE.Vector3(0, 1.7, 0); // Approximate head position
-            headPosition.applyMatrix4(npcAvatar.matrixWorld);
-            
-            // Position speech bubble above head
-            vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
-            
-            // Apply the same rotation as the NPC in the Y axis (horizontal rotation)
-            vrSpeechBubble.rotation.y = npcAvatar.rotation.y;
-        } catch (err) {
-            console.error('Error positioning speech bubble:', err);
-            // Fallback positioning
+        if (npcAvatar) {
+            try {
+                // Force matrix update to ensure correct position
+                npcAvatar.updateWorldMatrix(true, false);
+                
+                // Get NPC head position
+                const headPosition = new THREE.Vector3(0, 1.7, 0); // Approximate head position
+                headPosition.applyMatrix4(npcAvatar.matrixWorld);
+                
+                // Position speech bubble above head
+                vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+                
+                // CRITICAL FIX: Make speech bubble face the player (not match NPC direction)
+                if (camera) {
+                    vrSpeechBubble.lookAt(camera.position);
+                }
+                
+                // Add a slight tilt so it's easier to read
+                vrSpeechBubble.rotation.x += 0.2;
+            } catch (err) {
+                console.error('Error positioning speech bubble:', err);
+                // Fallback positioning
+                vrSpeechBubble.position.set(0, 2, -2);
+            }
+        } else {
+            // Default position if no avatar
             vrSpeechBubble.position.set(0, 2, -2);
         }
-    } else {
-        // Default position if no avatar
-        vrSpeechBubble.position.set(0, 2, -2);
     }
-}
     
+    // Get current page text
+    const pageText = pages[currentPageIndex];
+    const isLastPage = currentPageIndex === pages.length - 1;
+    
+    // THIS WAS MISSING: Actually call the functions we define
+    displayCurrentPage();
 }
+
+   
 
         // Helper function to draw rounded rectangle
         function roundRect(ctx, x, y, width, height, radius, fill) {
@@ -4397,23 +4404,23 @@ function sayGoodbye() {
         }
 
         // Update speech bubble position and rotation to match NPC, regardless of visibility
-        if (vrSpeechBubble && npcAvatar) {
-            // Update position to follow NPC's head
-            const headPosition = new THREE.Vector3(0, 1.7, 0);
-            headPosition.applyMatrix4(npcAvatar.matrixWorld);
-            vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
-            
-            // Match NPC's Y rotation so speech bubble faces same direction as NPC
-            vrSpeechBubble.rotation.y = npcAvatar.rotation.y;
-            
-            // Add a slight tilt so it's easier to read
-            vrSpeechBubble.rotation.x = 0.2;
-            
-            // Force visibility if NPC is speaking
-            if (npcSpeaking) {
-                vrSpeechBubble.visible = true;
-            }
-        }
+        if (vrSpeechBubble && npcAvatar && camera) {
+    // Update position to follow NPC's head
+    const headPosition = new THREE.Vector3(0, 1.7, 0);
+    headPosition.applyMatrix4(npcAvatar.matrixWorld);
+    vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+    
+    // CRITICAL FIX: Make speech bubble face the player, not match NPC direction
+    vrSpeechBubble.lookAt(camera.position);
+    
+    // Small tilt adjustment
+    vrSpeechBubble.rotation.x += 0.2;
+    
+    // Force visibility if NPC is speaking
+    if (npcSpeaking) {
+        vrSpeechBubble.visible = true;
+    }
+}
 
         // Update NPC movement to ensure NPC faces the user
         updateNPCMovement();
