@@ -4405,14 +4405,26 @@ function sayGoodbye() {
         headPosition.applyMatrix4(npcAvatar.matrixWorld);
         vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
         
-        // Save original rotation
-        const originalRotation = vrSpeechBubble.rotation.clone();
+        // Get player position
+        const userPosition = new THREE.Vector3();
+        camera.getWorldPosition(userPosition);
         
-        // Make speech bubble face the player
-        vrSpeechBubble.lookAt(camera.position);
+        // Calculate direction from speech bubble to player
+        const faceDir = new THREE.Vector3();
+        faceDir.subVectors(userPosition, vrSpeechBubble.position).normalize();
         
-        // Apply a fixed tilt for readability (absolute value, not incremental)
-        vrSpeechBubble.rotation.x = vrSpeechBubble.rotation.x + 0.2;
+        // Calculate target rotation - this is what makes it work well
+        const targetRotationY = Math.atan2(faceDir.x, faceDir.z);
+        
+        // Apply rotation with smooth interpolation
+        vrSpeechBubble.rotation.y = THREE.MathUtils.lerp(
+            vrSpeechBubble.rotation.y,
+            targetRotationY,
+            0.3 // Adjust speed as needed (higher = faster rotation)
+        );
+        
+        // Apply a fixed tilt angle for readability
+        vrSpeechBubble.rotation.x = 0.2; // Fixed value, not incremental
         
         // Force visibility if NPC is speaking
         if (npcSpeaking) {
