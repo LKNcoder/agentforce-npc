@@ -3171,81 +3171,93 @@ function resetUncertaintyExpression() {
     
     const { canvas, context, texture } = vrSpeechBubble.userData;
     const pages = splitTextIntoPages(text, 80); // Fewer chars per page for VR readability
-    let currentPageIndex = 0;
     
-    function displayCurrentPage() {
-        if (currentPageIndex >= pages.length) {
-            // We've shown all pages, hide the bubble
-            vrSpeechBubble.visible = false;
-            return;
-        }
-        
-        // Clear canvas
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw white background with rounded corners
-        context.fillStyle = 'white';
-        roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
-        
-        // Set up text properties
-        context.font = 'bold 32px Arial, Helvetica, sans-serif';
-        context.fillStyle = 'black';
-        context.textAlign = 'center';
-        context.textBaseline = 'middle';
-        
-        // Handle multi-line text within this page
-        const words = pageText.split(' ');
-        let lines = [];
-        let currentLine = words[0];
-        
-        for (let i = 1; i < words.length; i++) {
-            const testLine = currentLine + ' ' + words[i];
-            const metrics = context.measureText(testLine);
-            if (metrics.width > canvas.width - 60) {
-                lines.push(currentLine);
-                currentLine = words[i];
-            } else {
-                currentLine = testLine;
-            }
-        }
-        lines.push(currentLine);
-        
-        // Draw text lines
-        const lineHeight = 40;
-        const startY = (canvas.height - (lines.length * lineHeight)) / 2;
-        
-        lines.forEach((line, index) => {
-            context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
-        });
-        
-        // Add page indicator for multi-page bubbles
-        if (pages.length > 1) {
-            context.font = '24px Arial';
-            context.fillStyle = '#666666';
-            context.fillText(`${currentPageIndex+1}/${pages.length}`, canvas.width - 50, canvas.height - 30);
-            
-            // Add next page indicator if not the last page
-            if (!isLastPage) {
-                context.fillStyle = '#000000';
-                context.fillText('▼', canvas.width / 2, canvas.height - 30);
-            }
-        }
-        
-        // Update texture
-        texture.needsUpdate = true;
-        
-        // Position bubble above NPC
-        positionVRSpeechBubble();
-        
-        // Calculate duration based on text length (longer for more text)
-        const pageDuration = Math.max(3000, pageText.length * 70);
-        
-        // Move to next page after duration
-        setTimeout(() => {
-            currentPageIndex++;
-            displayCurrentPage();
-        }, pageDuration);
+    // Store page information in userData for persistence between frames
+    vrSpeechBubble.userData.pages = pages;
+    vrSpeechBubble.userData.currentPageIndex = 0;
+    vrSpeechBubble.userData.startTime = performance.now();
+    
+    // Initial display of first page
+    displayPage(0);
+    
+    function displayPage(pageIndex) {
+    if (!vrSpeechBubble || !vrSpeechBubble.userData || !vrSpeechBubble.userData.pages) return;
+    
+    const { canvas, context, texture } = vrSpeechBubble.userData;
+    const pages = vrSpeechBubble.userData.pages;
+    
+    if (pageIndex >= pages.length) {
+        // We've shown all pages, hide the bubble
+        vrSpeechBubble.visible = false;
+        return;
     }
+    
+    // Clear canvas
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw white background with rounded corners
+    context.fillStyle = 'white';
+    roundRect(context, 10, 10, canvas.width - 20, canvas.height - 20, 20, true);
+    
+    // Get the text for current page
+    const pageText = pages[pageIndex];
+    const isLastPage = pageIndex === pages.length - 1;
+    
+    // Set up text properties
+    context.font = 'bold 32px Arial, Helvetica, sans-serif';
+    context.fillStyle = 'black';
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    
+    // Handle multi-line text within this page
+    const words = pageText.split(' ');
+    let lines = [];
+    let currentLine = words[0] || '';
+    
+    for (let i = 1; i < words.length; i++) {
+        const testLine = currentLine + ' ' + words[i];
+        const metrics = context.measureText(testLine);
+        if (metrics.width > canvas.width - 60) {
+            lines.push(currentLine);
+            currentLine = words[i];
+        } else {
+            currentLine = testLine;
+        }
+    }
+    lines.push(currentLine);
+    
+    // Draw text lines
+    const lineHeight = 40;
+    const startY = (canvas.height - (lines.length * lineHeight)) / 2;
+    
+    lines.forEach((line, index) => {
+        context.fillText(line, canvas.width / 2, startY + (index * lineHeight));
+    });
+    
+    // Add page indicator for multi-page bubbles
+    if (pages.length > 1) {
+        context.font = '24px Arial';
+        context.fillStyle = '#666666';
+        context.fillText(`${pageIndex+1}/${pages.length}`, canvas.width - 50, canvas.height - 30);
+        
+        // Add next page indicator if not the last page
+        if (!isLastPage) {
+            context.fillStyle = '#000000';
+            context.fillText('▼', canvas.width / 2, canvas.height - 30);
+        }
+    }
+    
+    // Update texture
+    texture.needsUpdate = true;
+    
+    // Calculate duration based on text length (longer for more text)
+    const pageDuration = Math.max(3000, pageText.length * 70);
+    
+    // Store next page time
+    vrSpeechBubble.userData.nextPageTime = performance.now() + pageDuration;
+    vrSpeechBubble.userData.currentPageIndex = pageIndex;
+}
+
 
     function positionVRSpeechBubble() {
         if (npcAvatar) {
@@ -4397,9 +4409,24 @@ function sayGoodbye() {
                       
         }
 
+        if (vrSpeechBubble && vrSpeechBubble.visible && vrSpeechBubble.userData.pages) {
+    // Check if it's time to advance to the next page
+    const now = performance.now();
+    if (now > vrSpeechBubble.userData.nextPageTime) {
+        const nextPage = vrSpeechBubble.userData.currentPageIndex + 1;
+        if (nextPage >= vrSpeechBubble.userData.pages.length) {
+            // We've shown all pages, hide the bubble
+            vrSpeechBubble.visible = false;
+        } else {
+            // Advance to next page
+            displayPage(nextPage);
+        }
+    }
+}
+
         // Update speech bubble position and rotation to match NPC, regardless of visibility
         if (vrSpeechBubble && npcAvatar && camera) {
-    try {
+            try {
         // Update position to follow NPC's head
         const headPosition = new THREE.Vector3(0, 1.7, 0);
         headPosition.applyMatrix4(npcAvatar.matrixWorld);
@@ -4410,21 +4437,24 @@ function sayGoodbye() {
         camera.getWorldPosition(userPosition);
         
         // Calculate direction from speech bubble to player
-        const faceDir = new THREE.Vector3();
-        faceDir.subVectors(userPosition, vrSpeechBubble.position).normalize();
+        const toPlayer = new THREE.Vector3().subVectors(userPosition, vrSpeechBubble.position).normalize();
         
-        // Calculate target rotation - this is what makes it work well
-        const targetRotationY = Math.atan2(faceDir.x, faceDir.z);
-        
-        // Apply rotation with smooth interpolation
-        vrSpeechBubble.rotation.y = THREE.MathUtils.lerp(
-            vrSpeechBubble.rotation.y,
-            targetRotationY,
-            0.3 // Adjust speed as needed (higher = faster rotation)
+        // Use lookAt to create a rotation matrix facing the player
+        const lookMatrix = new THREE.Matrix4();
+        lookMatrix.lookAt(
+            new THREE.Vector3(0, 0, 0), // origin
+            toPlayer,                   // direction to player
+            new THREE.Vector3(0, 1, 0)  // up vector
         );
         
-        // Apply a fixed tilt angle for readability
-        vrSpeechBubble.rotation.x = 0.2; // Fixed value, not incremental
+        // Extract the rotation from the matrix
+        const rotation = new THREE.Quaternion();
+        rotation.setFromRotationMatrix(lookMatrix);
+        vrSpeechBubble.quaternion.copy(rotation);
+        
+        // Now add a tilt that's relative to the direction we're facing
+        // This ensures the tilt is always toward the player regardless of orientation
+        vrSpeechBubble.rotateX(0.2);
         
         // Force visibility if NPC is speaking
         if (npcSpeaking) {
@@ -4434,6 +4464,7 @@ function sayGoodbye() {
         console.error('Error updating speech bubble rotation:', err);
     }
 }
+
 
         // Update NPC movement to ensure NPC faces the user
         updateNPCMovement();
