@@ -34,12 +34,27 @@
             font-family: Arial, sans-serif;
             z-index: 100;
         }
+
+        #mic-button {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    padding: 12px 24px;
+    background-color: #ff4081;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 16px;
+    cursor: pointer;
+    z-index: 100;
+}
     </style>
 </head>
 <body>
     <div id="info">WebXR Microphone Visualization<br>Allow microphone access when prompted</div>
     <button id="vr-button" style="display: none">Enter VR</button>
-    
+    <button id="mic-button">Enable Microphone</button>
+
     <script type="module">
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js';
         import { VRButton } from 'https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/webxr/VRButton.js';
@@ -68,6 +83,7 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.xr.enabled = true;
+            renderer.xr.addEventListener('sessionstart', setupMicrophone);
             document.body.appendChild(renderer.domElement);
             
             // Add VR button
@@ -98,6 +114,7 @@
             
             // Set up audio context when user interacts
             document.getElementById('vr-button').addEventListener('click', setupMicrophone);
+            document.getElementById('mic-button').addEventListener('click', setupMicrophone);
             window.addEventListener('resize', onWindowResize);
             
             // Start animation loop
@@ -203,6 +220,11 @@
         
         // Show VR button once everything is loaded
         document.getElementById('vr-button').style.display = 'block';
+
+        // Hide the mic button if not in VR mode
+        setTimeout(() => {
+         setupMicrophone();
+        }, 1000);
     </script>
 </body>
 </html>
