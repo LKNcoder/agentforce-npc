@@ -3235,30 +3235,31 @@ function resetUncertaintyExpression() {
     }
 
     function positionVRSpeechBubble() {
-        if (npcAvatar) {
-            try {
-                // Force matrix update to ensure correct position
-                npcAvatar.updateWorldMatrix(true, false);
-                
-                // Get NPC head position
-                const headPosition = new THREE.Vector3(0, 1.7, 0); // Approximate head position
-                headPosition.applyMatrix4(npcAvatar.matrixWorld);
-                
-                // Position speech bubble above head
-                vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
-            } catch (err) {
-                console.error('Error positioning speech bubble:', err);
-                // Fallback positioning
-                vrSpeechBubble.position.set(0, 2, -2);
-            }
-        } else {
-            // Default position if no avatar
+    if (npcAvatar) {
+        try {
+            // Force matrix update to ensure correct position
+            npcAvatar.updateWorldMatrix(true, false);
+            
+            // Get NPC head position
+            const headPosition = new THREE.Vector3(0, 1.7, 0); // Approximate head position
+            headPosition.applyMatrix4(npcAvatar.matrixWorld);
+            
+            // Position speech bubble above head
+            vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+            
+            // Apply the same rotation as the NPC in the Y axis (horizontal rotation)
+            vrSpeechBubble.rotation.y = npcAvatar.rotation.y;
+        } catch (err) {
+            console.error('Error positioning speech bubble:', err);
+            // Fallback positioning
             vrSpeechBubble.position.set(0, 2, -2);
         }
+    } else {
+        // Default position if no avatar
+        vrSpeechBubble.position.set(0, 2, -2);
     }
+}
     
-    // Start displaying pages
-    displayCurrentPage();
 }
 
         // Helper function to draw rounded rectangle
@@ -4348,6 +4349,20 @@ function sayGoodbye() {
                 // ...existing code...
             }
                       
+        }
+
+         // Update speech bubble position and rotation to match NPC
+         if (vrSpeechBubble && vrSpeechBubble.visible && npcAvatar) {
+            // Update position to follow NPC's head
+            const headPosition = new THREE.Vector3(0, 1.7, 0);
+            headPosition.applyMatrix4(npcAvatar.matrixWorld);
+            vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+            
+            // Match NPC's Y rotation so speech bubble faces same direction as NPC
+            vrSpeechBubble.rotation.y = npcAvatar.rotation.y;
+            
+            // Add a slight tilt so it's easier to read
+            vrSpeechBubble.rotation.x = 0.2;
         }
 
         // Update NPC movement to ensure NPC faces the user
