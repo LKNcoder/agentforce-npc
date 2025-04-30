@@ -3465,8 +3465,13 @@ function checkModelProximity() {
             const labelPosition = new THREE.Vector3();
             object.getWorldPosition(labelPosition);
             
-            // Calculate distance to player
-            const distance = playerPosition.distanceTo(labelPosition);
+            // Calculate horizontal distance only (ignoring height)
+            const playerXZ = new THREE.Vector2(playerPosition.x, playerPosition.z);
+            const labelXZ = new THREE.Vector2(labelPosition.x, labelPosition.z);
+            const distance = playerXZ.distanceTo(labelXZ);
+            
+            // For debugging
+            console.log(`Distance to ${modelName}: ${distance.toFixed(2)} (horizontal only)`);
             
             // Check if player is in this zone
             const wasInZone = playerModelZones.get(modelPath) || false;
