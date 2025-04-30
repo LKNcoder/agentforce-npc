@@ -915,6 +915,10 @@ body.vr-active canvas {
         let ambientSound;
         let lastVolumeLevel = 0;
         let isPointingAtExitButton = false;
+        let elevenLabsApiKey = "sk_ea8fa34747adfd42f4a9ca65a4cb42e2d40cdfed5925a40f"; // You'll set this when initializing
+        let elevenLabsTTSCache = {}; // Cache for API responses
+        let useElevenLabs = true; // Flag to enable/disable ElevenLabs
+        let currentVoiceId = "AZnzlk1XvdvUeBnXmlld"; // Default voice ID
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -1365,6 +1369,20 @@ function setupLoaders() {
     
     console.log('VR Experience initialization complete');
 }
+
+
+
+// Function to initialize ElevenLabs
+function initializeElevenLabs(apiKey) {
+    elevenLabsApiKey = apiKey;
+    console.log("ElevenLabs initialized with API key");
+}
+
+
+
+
+
+
 
 function setupLighting() {
     // Ambient light
@@ -2701,113 +2719,94 @@ function createMicIndicator() {
         }
         
         // NPC speak with text
-        function npcSpeak(text) {
-            // Don't allow speech if already speaking
-            if (npcSpeaking) {
-                console.log("NPC is already speaking, ignoring new speech request");
-                return;
-            }
-            
-            npcSpeaking = true;
+        async function npcSpeak(text) {
+    // Don't allow speech if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring new speech request");
+        return;
+    }
+    
+    npcSpeaking = true;
 
-            // Check if we have a pre-recorded audio for this phrase
-            const audioFile = preloadedPhrases[text];
-
-            // Show text in appropriate speech bubble
-            if (renderer && renderer.xr.isPresenting) {
-                updateVRSpeechBubble(text);
-            } else {
-                showSpeechBubble(text);
-            }
-
-            // Select animation based on speech content
-            let animationCategory = 'talking';
-
-// Check text content for contextual animation selection
-const lowerText = text.toLowerCase();
-
-// Greeting animations
-if (lowerText.includes('hello') || lowerText.includes('welcome') || 
-    lowerText.includes('hi there') || lowerText.startsWith('hi')) {
-    animationCategory = 'greeting';
-}
-// Goodbye animations
-else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
-         lowerText.includes('see you') || lowerText.includes('thank')) {
-    animationCategory = 'greeting'; // Wave for goodbyes too
-}
-// Error/uncertainty/shrug animations
-else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
-         lowerText.includes("sorry") || lowerText.includes("can't help") ||
-         lowerText.includes("didn't catch what you said") || 
-         lowerText.includes("didn't quite understand") ||
-         lowerText.includes("i apologize")) {
-    animationCategory = 'error';  // This will use the shrug animation
-    applyUncertaintyExpression();
-}
-// Affirmative/yes animations
-else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
-         lowerText.includes("correct") || lowerText.includes("certainly") ||
-         lowerText.includes("of course") || lowerText.includes("sure") ||
-         lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
-    animationCategory = 'affirmative';  // This will use the yes animation
-}
-// Negative/no animations
-else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
-         lowerText.includes("can't") || lowerText.includes("won't") ||
-         lowerText.includes("don't have that information") || text === "I can't help with that.") {
-    animationCategory = 'negative';  // This will use the no animation
-}
-            
-            // Play the appropriate animation
-            playAnimationByCategory(animationCategory);
-            
-            // If we have a pre-recorded audio file, use it
-    if (audioFile) {
-        console.log(`Playing pre-recorded audio: ${audioFile}`);
-        
-        // Play the audio file
-        const audio = new Audio(`./audio-cache/${audioFile}`);
-        
-        // Set up audio callbacks
-        audio.oncanplaythrough = () => {
-            // Start lip sync
-            startLipSync(text);
-        };
-        
-        audio.onended = () => {
-            // Reset NPC state
-            npcSpeaking = false;
-            stopLipSync();
-            resetUncertaintyExpression();
-            
-            if (renderer && renderer.xr.isPresenting) {
-                vrSpeechBubble.visible = false;
-            } else {
-                speechBubble.style.display = 'none';
-            }
-            
-            // Return to idle animation if not moving
-            if (!npcMoving) {
-                playAnimationByCategory('idle');
-            }
-        };
-        
-        audio.onerror = (e) => {
-            console.error("Audio file playback error:", e);
-            // Fall back to text only
-            generateEnhancedLipSync(text, text.length * 0.1);
-            handleTextOnlySpeech(text);
-        };
-        
-        // Try to play the audio
-        audio.play().catch(error => {
-            console.error("Error playing audio:", error);
-            // Fall back to text only
-            handleTextOnlySpeech(text);
-        });
+    // Show text in appropriate speech bubble
+    if (renderer && renderer.xr.isPresenting) {
+        updateVRSpeechBubble(text);
     } else {
-        // No audio file available - use text only
+        showSpeechBubble(text);
+    }
+
+    // Select animation based on speech content
+    let animationCategory = 'talking';
+    
+    // Determine animation category based on text content
+    const lowerText = text.toLowerCase();
+    
+    // All your existing animation selection logic remains the same
+    if (lowerText.includes('hello') || lowerText.includes('welcome') || 
+        lowerText.includes('hi there') || lowerText.startsWith('hi')) {
+        animationCategory = 'greeting';
+    }
+    else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
+        lowerText.includes('see you') || lowerText.includes('thank')) {
+        animationCategory = 'greeting';
+    }
+    else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
+        lowerText.includes("sorry") || lowerText.includes("can't help") ||
+        lowerText.includes("didn't catch what you said") || 
+        lowerText.includes("didn't quite understand") ||
+        lowerText.includes("i apologize")) {
+        animationCategory = 'error';
+        applyUncertaintyExpression();
+    }
+    else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
+        lowerText.includes("correct") || lowerText.includes("certainly") ||
+        lowerText.includes("of course") || lowerText.includes("sure") ||
+        lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
+        animationCategory = 'affirmative';
+    }
+    else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
+        lowerText.includes("can't") || lowerText.includes("won't") ||
+        lowerText.includes("don't have that information") || text === "I can't help with that.") {
+        animationCategory = 'negative';
+    }
+    
+    // Play the appropriate animation
+    playAnimationByCategory(animationCategory);
+    
+    // Try to use pre-recorded audio first (to save API calls)
+    const audioFile = preloadedPhrases[text];
+    
+    if (audioFile) {
+        // Use pre-recorded file
+        console.log(`Playing pre-recorded audio: ${audioFile}`);
+        const audio = new Audio(`./audio-cache/${audioFile}`);
+        handleAudioPlayback(audio, text, animationCategory);
+    } 
+    else if (useElevenLabs && elevenLabsApiKey) {
+        // Check cache first
+        if (elevenLabsTTSCache[text]) {
+            console.log("Using cached ElevenLabs audio");
+            const audio = new Audio(elevenLabsTTSCache[text]);
+            handleAudioPlayback(audio, text, animationCategory);
+        } else {
+            // Generate new audio with ElevenLabs
+            try {
+                const audioBlob = await generateElevenLabsSpeech(text);
+                const audioUrl = URL.createObjectURL(audioBlob);
+                
+                // Cache the result
+                elevenLabsTTSCache[text] = audioUrl;
+                
+                const audio = new Audio(audioUrl);
+                handleAudioPlayback(audio, text, animationCategory);
+            } catch (error) {
+                console.error("ElevenLabs TTS error:", error);
+                // Fall back to text only
+                handleTextOnlySpeech(text);
+            }
+        }
+    } else {
+        // Fall back to text-only speech
         handleTextOnlySpeech(text);
     }
 }
@@ -2838,6 +2837,71 @@ function handleTextOnlySpeech(text) {
         playAnimationByCategory('idle');
     }, speakingDuration);
 }
+
+
+// Function to generate speech using ElevenLabs API
+async function generateElevenLabsSpeech(text) {
+    console.log(`Generating ElevenLabs speech: "${text.substring(0, 30)}..."`);
+    
+    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${currentVoiceId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'xi-api-key': elevenLabsApiKey
+        },
+        body: JSON.stringify({
+            text: text,
+            model_id: "eleven_monolingual_v1",
+            voice_settings: { stability: 0.5, similarity_boost: 0.5 }
+        })
+    });
+    
+    if (!response.ok) {
+        throw new Error(`ElevenLabs API Error: ${response.status}`);
+    }
+    
+    return await response.blob();
+}
+
+// Helper function for handling audio playback
+function handleAudioPlayback(audio, text, animationCategory) {
+    // Set up audio callbacks
+    audio.oncanplaythrough = () => {
+        // Start lip sync
+        startLipSync(text);
+    };
+    
+    audio.onended = () => {
+        // Reset NPC state
+        npcSpeaking = false;
+        stopLipSync();
+        resetUncertaintyExpression();
+        
+        if (renderer && renderer.xr.isPresenting) {
+            vrSpeechBubble.visible = false;
+        } else {
+            speechBubble.style.display = 'none';
+        }
+        
+        // Return to idle animation if not moving
+        if (!npcMoving) {
+            playAnimationByCategory('idle');
+        }
+    };
+    
+    audio.onerror = (e) => {
+        console.error("Audio playback error:", e);
+        // Fall back to text only
+        handleTextOnlySpeech(text);
+    };
+    
+    // Play the audio
+    audio.play().catch(error => {
+        console.error("Error playing audio:", error);
+        handleTextOnlySpeech(text);
+    });
+}
+
 
 
 
