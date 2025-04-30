@@ -1013,28 +1013,7 @@ body.vr-active canvas {
         navigator.xr.isSessionSupported('immersive-vr')
             .then((supported) => {
                 if (supported) {
-                    // Use existing microphone stream if available
-                    if (window.microphoneStream) {
-                        console.log('Using existing microphone stream');
-                        // Set up audio context with existing stream
-                        if (!audioContext) {
-                            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                        }
-                        startRecordingContinuous(window.microphoneStream);
-                        
-                        // Auto-start speech recognition if available
-                        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-                            if (recognition) {
-                                try {
-                                    recognition.start();
-                                    isListening = true;
-                                    console.log('Speech recognition automatically started');
-                                } catch (error) {
-                                    console.error('Error auto-starting speech recognition:', error);
-                                }
-                            }
-                        }
-                    }
+                 
                     
                     // Initialize VR experience if not already initialized
                     if (!vrInitialized) {
@@ -3447,63 +3426,7 @@ function handleTextOnlySpeech(text) {
 
 
 
-        // Start continuous audio recording for speech detection
-        function startRecordingContinuous() {
-    navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(stream => {
-            console.log('Microphone access granted, starting continuous listening');
-            
-            // Create audio context if it doesn't exist yet
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            
-            // Create media recorder
-            mediaRecorder = new MediaRecorder(stream);
-            audioChunks = [];
-            
-            // Setup audio analyzer for volume detection
-            const audioSource = audioContext.createMediaStreamSource(stream);
-            audioAnalyser = audioContext.createAnalyser();
-            audioAnalyser.fftSize = 256;
-            audioSource.connect(audioAnalyser);
-            
-            analyserData = new Uint8Array(audioAnalyser.frequencyBinCount);
-            
-            // Handle data available event
-            mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunks.push(event.data);
-                    
-                    // Process chunks periodically to detect speech
-                    if (audioChunks.length > 5) { 
-                        processAudioChunks();
-                    }
-                }
-            };
-            
-            mediaRecorder.onstop = () => {
-                console.log('Recording stopped unexpectedly, restarting...');
-                setTimeout(() => {
-                    if (mediaRecorder && mediaRecorder.state === 'inactive') {
-                        try {
-                            mediaRecorder.start(1000); // 1-second chunks
-                        } catch (e) {
-                            console.warn('Failed to restart media recorder:', e);
-                        }
-                    }
-                }, 1000);
-            };
-            
-            // Start recording
-            mediaRecorder.start(1000); // 1-second chunks
-        })
-        .catch(err => {
-            console.warn('Error accessing microphone:', err);
-            // Replace alert with non-blocking notification
-            showTemporaryNotification('Could not access your microphone. VR chat functionality will be limited.');
-        });
-}
+     
 
 
 // Add this helper function for non-blocking notifications
@@ -3530,37 +3453,9 @@ function showTemporaryNotification(message) {
     }, 5000);
 }
 
-        // Process audio chunks for speech detection
-        function processAudioChunks() {
-            // Only process if we have enough audio data and not currently processing
-            if (audioChunks.length < 3 || npcSpeaking) return;
-            
-            // Reset chunks for next processing
-            audioChunks = [];
-            
-          
-        }
+      
 
-        // Create mute toggle button
-        function createMuteToggle() {
-            // Create a box for the mute toggle
-            const geometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-            const material = new THREE.MeshStandardMaterial({ 
-                color: 0x44ff44,  // Green for unmuted
-                emissive: 0x224422,
-                roughness: 0.3,
-                metalness: 0.8
-            });
-            
-            muteButton = new THREE.Mesh(geometry, material);
-            
-            // Position it statically in the world
-            muteButton.position.set(-0.2, 1.2, -1.5);
-            muteButton.userData.isInteractable = true;
-            muteButton.userData.type = 'muteToggle';
-            
-            scene.add(muteButton);
-        }
+      
 
         // Create teleport marker for VR movement
         function createTeleportMarker() {
