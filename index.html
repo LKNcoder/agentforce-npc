@@ -2753,6 +2753,16 @@ function splitTextIntoPages(text, maxCharsPerPage = 100) {
         // Show speech bubble
         function showSpeechBubble(text) {
     const speechBubble = document.getElementById('speechBubble');
+    
+    // Make sure we found the element
+    if (!speechBubble) {
+        console.error('Speech bubble element not found!');
+        return;
+    }
+    
+    // Force visibility in case it was hidden
+    speechBubble.style.display = 'block';
+    
     const pages = splitTextIntoPages(text);
     let currentPageIndex = 0;
     
@@ -2775,7 +2785,10 @@ function splitTextIntoPages(text, maxCharsPerPage = 100) {
             '<div style="text-align:center;margin-top:5px">▼</div>' : '';
         
         speechBubble.innerHTML = pageText + nextPageIndicator + pageIndicator;
+        
+        // Make absolutely sure it's visible
         speechBubble.style.display = 'block';
+        speechBubble.style.zIndex = '1000'; // Ensure high z-index
         
         // Calculate duration based on text length (longer for more text)
         const pageDuration = Math.max(2000, pageText.length * 50);
@@ -2917,9 +2930,10 @@ function handleTextOnlySpeech(text) {
     setTimeout(() => {
         // Hide speech bubble
         if (renderer && renderer.xr.isPresenting) {
-            vrSpeechBubble.visible = false;
+            if (vrSpeechBubble) vrSpeechBubble.visible = false;
         } else {
-            speechBubble.style.display = 'none';
+            const speechBubble = document.getElementById('speechBubble');
+            if (speechBubble) speechBubble.style.display = 'none';
         }
         
         // Reset speaking flag
@@ -2929,6 +2943,8 @@ function handleTextOnlySpeech(text) {
         
         // Return to idle animation
         playAnimationByCategory('idle');
+        
+        console.log('Speech completed, bubble hidden');
     }, speakingDuration);
 }
 
@@ -4265,7 +4281,7 @@ function sayGoodbye() {
                     renderer.xr.getSession().end();
                 }
                 window.inGoodbyeSequence = false;
-            }, (goodbyeDuration * 1000) + 1500); // Full audio duration + 1.5s buffer
+            }, (goodbyeDuration * 1000) + 500); // Full audio duration + 0.5s buffer
         })
         .catch(err => {
             console.error("Failed to play goodbye audio:", err);
@@ -4280,7 +4296,7 @@ function sayGoodbye() {
                     renderer.xr.getSession().end();
                 }
                 window.inGoodbyeSequence = false;
-            }, 4500); // 4.5 seconds is enough for short goodbye message + animation
+            }, 1500); // 1.5 seconds is enough for short goodbye message + animation
         });
 }
 
