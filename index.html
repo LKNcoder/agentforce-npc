@@ -915,15 +915,7 @@ body.vr-active canvas {
         let ambientSound;
         let lastVolumeLevel = 0;
         let isPointingAtExitButton = false;
-        let elevenLabsApiKey = "sk_ea8fa34747adfd42f4a9ca65a4cb42e2d40cdfed5925a40f"; // You'll set this when initializing
-        let elevenLabsTTSCache = {}; // Cache for API responses
-        let useElevenLabs = true; // Flag to enable/disable ElevenLabs
-        let currentVoiceId = "AZnzlk1XvdvUeBnXmlld"; // Default voice ID
-        let recordingInterval = null;
-        let recordingDuration = 3000; // Record 3 seconds at a time
-        let isRecordingForSTT = false;
-        
-        let elSTTEndpoint = 'https://api.elevenlabs.io/v1/speech-to-text';
+        const playerModelZones = new Map();
 
         // Viseme definitions (standard set used by Rhubarb)
         const visemes = {
@@ -1374,20 +1366,6 @@ function setupLoaders() {
     
     console.log('VR Experience initialization complete');
 }
-
-
-
-// Function to initialize ElevenLabs
-function initializeElevenLabs(apiKey) {
-    elevenLabsApiKey = apiKey;
-    console.log("ElevenLabs initialized with API key");
-}
-
-
-
-
-
-
 
 function setupLighting() {
     // Ambient light
@@ -1934,7 +1912,41 @@ function replaceModelWithPinkVersion() {
     );
 }
 
-
+function lookAtModelAndSpeak(modelPath, text) {
+    if (npcSpeaking) return;
+    
+    // Find the model object by its path
+    let targetModel = null;
+    scene.traverse((object) => {
+        if (object.userData && object.userData.modelPath === modelPath) {
+            targetModel = object;
+        }
+    });
+    
+    if (!targetModel) {
+        console.error(`Could not find model with path: ${modelPath}`);
+        return;
+    }
+    
+    // Get model position
+    const modelPosition = new THREE.Vector3();
+    targetModel.getWorldPosition(modelPosition);
+    
+    // Get NPC position
+    const npcPosition = new THREE.Vector3();
+    npcAvatar.getWorldPosition(npcPosition);
+    
+    // Calculate direction from NPC to model
+    const direction = new THREE.Vector3().subVectors(modelPosition, npcPosition);
+    direction.y = 0; // Keep on xz plane for looking
+    
+    // Make NPC face the model
+    const lookTarget = new THREE.Vector3().copy(npcPosition).add(direction);
+    npcAvatar.lookAt(lookTarget);
+    
+    // Have NPC speak - animation will be automatically selected based on text content
+    npcSpeak(text);
+}
 
 
 
@@ -2355,163 +2367,62 @@ function replaceModelWithPinkVersion() {
 
         // Set up speech recognition
         function setupSpeechRecognition() {
-    console.log('Setting up ElevenLabs STT');
-    
-    // Don't need to initialize recognition object since we're replacing it
-    
-    if (!window.microphoneStream) {
-        console.warn('Microphone not available for ElevenLabs STT');
-        return;
-    }
-    
-    // Check if we have ElevenLabs API key
-    if (!elevenLabsApiKey) {
-        console.warn('ElevenLabs API key not set, cannot use STT');
-        return;
-    }
-    
-    // Set up MediaRecorder to capture audio
-    setupElevenLabsSTTRecording();
-}
-
-// New function for ElevenLabs STT recording
-function setupElevenLabsSTTRecording() {
-    // Clear any existing recorder
-    stopElevenLabsRecording();
-    
-    try {
-        // Create a MediaRecorder instance for the microphone stream
-        mediaRecorder = new MediaRecorder(window.microphoneStream, {
-            mimeType: 'audio/webm',  // Compatible format for ElevenLabs
-            audioBitsPerSecond: 16000 // ElevenLabs prefers 16kHz
-        });
+    // Set up Web Speech API if available
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
+        recognition.continuous = true; // Make it continuous
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
         
-        // Handle data available
-        mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
+        recognition.onresult = function(event) {
+            // Get the last result
+            const lastResultIndex = event.results.length - 1;
+            const transcript = event.results[lastResultIndex][0].transcript;
+            handleUserSpeech(transcript);
+        };
+        
+        recognition.onend = function() {
+            // Auto restart if it ends
+            console.log('Speech recognition ended, restarting...');
+            try {
+                recognition.start();
+                isListening = true;
+            } catch (e) {
+                console.warn('Could not restart speech recognition:', e);
             }
         };
         
-        // When recording stops, send to ElevenLabs
-        mediaRecorder.onstop = () => {
-            if (audioChunks.length === 0) return;
+        recognition.onerror = function(event) {
+            console.error('Speech recognition error:', event.error);
+            isListening = false;
             
-            // Convert chunks to blob
-            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-            
-            // Reset chunks for next recording
-            audioChunks = [];
-            
-            // Only send to ElevenLabs if blob is not empty
-            if (audioBlob.size > 0) {
-                sendAudioToElevenLabs(audioBlob);
-            }
-            
-            // If continuous recording is enabled, start a new recording
-            if (isRecordingForSTT) {
-                mediaRecorder.start();
-            }
-        };
-        
-        // Start recording
-        startContinuousRecording();
-        console.log('ElevenLabs STT recording initialized');
-    } catch (error) {
-        console.error('Failed to initialize MediaRecorder:', error);
-    }
-}
-
-// Function to start continuous recording
-function startContinuousRecording() {
-    if (!mediaRecorder) return;
-    
-    isRecordingForSTT = true;
-    
-    // Start initial recording
-    mediaRecorder.start();
-    console.log('Started recording for ElevenLabs STT');
-    
-    // Set up interval to stop/restart recording periodically
-    recordingInterval = setInterval(() => {
-        if (mediaRecorder.state === 'recording') {
-            mediaRecorder.stop();
-            // MediaRecorder.onstop will handle restarting
-        }
-    }, recordingDuration);
-}
-
-// Function to stop recording
-function stopElevenLabsRecording() {
-    isRecordingForSTT = false;
-    
-    if (recordingInterval) {
-        clearInterval(recordingInterval);
-        recordingInterval = null;
-    }
-    
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        mediaRecorder.stop();
-    }
-    
-    // Clear any pending chunks
-    audioChunks = [];
-}
-
-// Function to send audio to ElevenLabs API
-async function sendAudioToElevenLabs(audioBlob) {
-    // Show a small visual indicator that we're processing
-    if (volumeIndicator) {
-        volumeIndicator.material.emissive.setRGB(1, 0.5, 0); // Orange when processing
-    }
-    
-    try {
-        // Create form data
-        const formData = new FormData();
-        formData.append('audio', audioBlob);
-        
-        // Send to ElevenLabs API
-        const response = await fetch(elSTTEndpoint, {
-            method: 'POST',
-            headers: {
-                'xi-api-key': elevenLabsApiKey
-                // Content-Type is set automatically by FormData
-            },
-            body: formData
-        });
-        
-        // Reset indicator
-        if (volumeIndicator) {
-            volumeIndicator.material.emissive.setRGB(0, 1, 0); // Back to green
-        }
-        
-        if (!response.ok) {
-            throw new Error(`ElevenLabs API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        if (data.text && data.text.trim() !== '') {
-            console.log('ElevenLabs STT result:', data.text);
-            
-            // Process speech the same way as Web Speech API would
-            handleUserSpeech(data.text);
-        }
-    } catch (error) {
-        console.error('Error with ElevenLabs STT:', error);
-        
-        // Reset indicator to show error
-        if (volumeIndicator) {
-            volumeIndicator.material.emissive.setRGB(1, 0, 0); // Red for error
+            // Try to restart after a brief delay
             setTimeout(() => {
-                volumeIndicator.material.emissive.setRGB(0, 1, 0); // Back to green
-            }, 1000);
+                try {
+                    recognition.start();
+                    isListening = true;
+                } catch (e) {
+                    console.warn('Could not restart speech recognition after error:', e);
+                }
+            }, 2000);
+        };
+        
+        // Auto-start in VR
+        if (renderer && renderer.xr && renderer.xr.isPresenting) {
+            try {
+                recognition.start();
+                isListening = true;
+                console.log('Speech recognition auto-started in VR');
+            } catch (e) {
+                console.warn('Could not auto-start speech recognition:', e);
+            }
         }
+    } else {
+        console.warn('Speech recognition not supported in this browser');
+        // Use non-blocking notification instead of alert
+        showTemporaryNotification('Speech recognition not supported in your browser. Voice interactions will be limited.');
     }
 }
-
-
-
 
         // Handle user speech
     function handleUserSpeech(text) {
@@ -2825,94 +2736,113 @@ function createMicIndicator() {
         }
         
         // NPC speak with text
-        async function npcSpeak(text) {
-    // Don't allow speech if already speaking
-    if (npcSpeaking) {
-        console.log("NPC is already speaking, ignoring new speech request");
-        return;
-    }
-    
-    npcSpeaking = true;
-
-    // Show text in appropriate speech bubble
-    if (renderer && renderer.xr.isPresenting) {
-        updateVRSpeechBubble(text);
-    } else {
-        showSpeechBubble(text);
-    }
-
-    // Select animation based on speech content
-    let animationCategory = 'talking';
-    
-    // Determine animation category based on text content
-    const lowerText = text.toLowerCase();
-    
-    // All your existing animation selection logic remains the same
-    if (lowerText.includes('hello') || lowerText.includes('welcome') || 
-        lowerText.includes('hi there') || lowerText.startsWith('hi')) {
-        animationCategory = 'greeting';
-    }
-    else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
-        lowerText.includes('see you') || lowerText.includes('thank')) {
-        animationCategory = 'greeting';
-    }
-    else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
-        lowerText.includes("sorry") || lowerText.includes("can't help") ||
-        lowerText.includes("didn't catch what you said") || 
-        lowerText.includes("didn't quite understand") ||
-        lowerText.includes("i apologize")) {
-        animationCategory = 'error';
-        applyUncertaintyExpression();
-    }
-    else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
-        lowerText.includes("correct") || lowerText.includes("certainly") ||
-        lowerText.includes("of course") || lowerText.includes("sure") ||
-        lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
-        animationCategory = 'affirmative';
-    }
-    else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
-        lowerText.includes("can't") || lowerText.includes("won't") ||
-        lowerText.includes("don't have that information") || text === "I can't help with that.") {
-        animationCategory = 'negative';
-    }
-    
-    // Play the appropriate animation
-    playAnimationByCategory(animationCategory);
-    
-    // Try to use pre-recorded audio first (to save API calls)
-    const audioFile = preloadedPhrases[text];
-    
-    if (audioFile) {
-        // Use pre-recorded file
-        console.log(`Playing pre-recorded audio: ${audioFile}`);
-        const audio = new Audio(`./audio-cache/${audioFile}`);
-        handleAudioPlayback(audio, text, animationCategory);
-    } 
-    else if (useElevenLabs && elevenLabsApiKey) {
-        // Check cache first
-        if (elevenLabsTTSCache[text]) {
-            console.log("Using cached ElevenLabs audio");
-            const audio = new Audio(elevenLabsTTSCache[text]);
-            handleAudioPlayback(audio, text, animationCategory);
-        } else {
-            // Generate new audio with ElevenLabs
-            try {
-                const audioBlob = await generateElevenLabsSpeech(text);
-                const audioUrl = URL.createObjectURL(audioBlob);
-                
-                // Cache the result
-                elevenLabsTTSCache[text] = audioUrl;
-                
-                const audio = new Audio(audioUrl);
-                handleAudioPlayback(audio, text, animationCategory);
-            } catch (error) {
-                console.error("ElevenLabs TTS error:", error);
-                // Fall back to text only
-                handleTextOnlySpeech(text);
+        function npcSpeak(text) {
+            // Don't allow speech if already speaking
+            if (npcSpeaking) {
+                console.log("NPC is already speaking, ignoring new speech request");
+                return;
             }
-        }
+            
+            npcSpeaking = true;
+
+            // Check if we have a pre-recorded audio for this phrase
+            const audioFile = preloadedPhrases[text];
+
+            // Show text in appropriate speech bubble
+            if (renderer && renderer.xr.isPresenting) {
+                updateVRSpeechBubble(text);
+            } else {
+                showSpeechBubble(text);
+            }
+
+            // Select animation based on speech content
+            let animationCategory = 'talking';
+
+// Check text content for contextual animation selection
+const lowerText = text.toLowerCase();
+
+// Greeting animations
+if (lowerText.includes('hello') || lowerText.includes('welcome') || 
+    lowerText.includes('hi there') || lowerText.startsWith('hi')) {
+    animationCategory = 'greeting';
+}
+// Goodbye animations
+else if (lowerText.includes('goodbye') || lowerText.includes('bye') || 
+         lowerText.includes('see you') || lowerText.includes('thank')) {
+    animationCategory = 'greeting'; // Wave for goodbyes too
+}
+// Error/uncertainty/shrug animations
+else if (lowerText.includes("i don't know") || lowerText.includes("not sure") || 
+         lowerText.includes("sorry") || lowerText.includes("can't help") ||
+         lowerText.includes("didn't catch what you said") || 
+         lowerText.includes("didn't quite understand") ||
+         lowerText.includes("i apologize")) {
+    animationCategory = 'error';  // This will use the shrug animation
+    applyUncertaintyExpression();
+}
+// Affirmative/yes animations
+else if (lowerText.includes("yes") || lowerText.includes("absolutely") || 
+         lowerText.includes("correct") || lowerText.includes("certainly") ||
+         lowerText.includes("of course") || lowerText.includes("sure") ||
+         lowerText.includes("definitely") || text === "Sure!" || text === "Of course!") {
+    animationCategory = 'affirmative';  // This will use the yes animation
+}
+// Negative/no animations
+else if (lowerText.includes("no") || lowerText.includes("unfortunately") || 
+         lowerText.includes("can't") || lowerText.includes("won't") ||
+         lowerText.includes("don't have that information") || text === "I can't help with that.") {
+    animationCategory = 'negative';  // This will use the no animation
+}
+            
+            // Play the appropriate animation
+            playAnimationByCategory(animationCategory);
+            
+            // If we have a pre-recorded audio file, use it
+    if (audioFile) {
+        console.log(`Playing pre-recorded audio: ${audioFile}`);
+        
+        // Play the audio file
+        const audio = new Audio(`./audio-cache/${audioFile}`);
+        
+        // Set up audio callbacks
+        audio.oncanplaythrough = () => {
+            // Start lip sync
+            startLipSync(text);
+        };
+        
+        audio.onended = () => {
+            // Reset NPC state
+            npcSpeaking = false;
+            stopLipSync();
+            resetUncertaintyExpression();
+            
+            if (renderer && renderer.xr.isPresenting) {
+                vrSpeechBubble.visible = false;
+            } else {
+                speechBubble.style.display = 'none';
+            }
+            
+            // Return to idle animation if not moving
+            if (!npcMoving) {
+                playAnimationByCategory('idle');
+            }
+        };
+        
+        audio.onerror = (e) => {
+            console.error("Audio file playback error:", e);
+            // Fall back to text only
+            generateEnhancedLipSync(text, text.length * 0.1);
+            handleTextOnlySpeech(text);
+        };
+        
+        // Try to play the audio
+        audio.play().catch(error => {
+            console.error("Error playing audio:", error);
+            // Fall back to text only
+            handleTextOnlySpeech(text);
+        });
     } else {
-        // Fall back to text-only speech
+        // No audio file available - use text only
         handleTextOnlySpeech(text);
     }
 }
@@ -2943,71 +2873,6 @@ function handleTextOnlySpeech(text) {
         playAnimationByCategory('idle');
     }, speakingDuration);
 }
-
-
-// Function to generate speech using ElevenLabs API
-async function generateElevenLabsSpeech(text) {
-    console.log(`Generating ElevenLabs speech: "${text.substring(0, 30)}..."`);
-    
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${currentVoiceId}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'xi-api-key': elevenLabsApiKey
-        },
-        body: JSON.stringify({
-            text: text,
-            model_id: "eleven_monolingual_v1",
-            voice_settings: { stability: 0.5, similarity_boost: 0.5 }
-        })
-    });
-    
-    if (!response.ok) {
-        throw new Error(`ElevenLabs API Error: ${response.status}`);
-    }
-    
-    return await response.blob();
-}
-
-// Helper function for handling audio playback
-function handleAudioPlayback(audio, text, animationCategory) {
-    // Set up audio callbacks
-    audio.oncanplaythrough = () => {
-        // Start lip sync
-        startLipSync(text);
-    };
-    
-    audio.onended = () => {
-        // Reset NPC state
-        npcSpeaking = false;
-        stopLipSync();
-        resetUncertaintyExpression();
-        
-        if (renderer && renderer.xr.isPresenting) {
-            vrSpeechBubble.visible = false;
-        } else {
-            speechBubble.style.display = 'none';
-        }
-        
-        // Return to idle animation if not moving
-        if (!npcMoving) {
-            playAnimationByCategory('idle');
-        }
-    };
-    
-    audio.onerror = (e) => {
-        console.error("Audio playback error:", e);
-        // Fall back to text only
-        handleTextOnlySpeech(text);
-    };
-    
-    // Play the audio
-    audio.play().catch(error => {
-        console.error("Error playing audio:", error);
-        handleTextOnlySpeech(text);
-    });
-}
-
 
 
 
@@ -3564,6 +3429,102 @@ function resetUncertaintyExpression() {
 }
 
 
+
+// Add to the render function to check proximity every frame
+function checkModelProximity() {
+    // Skip if NPC is already speaking
+    if (npcSpeaking) return;
+    
+    // Get player position
+    const playerPosition = new THREE.Vector3();
+    cameraRig.getWorldPosition(playerPosition);
+    
+    // Define zone distances
+    const ENTER_DISTANCE = 4.0; // meters to trigger explanation
+    const EXIT_DISTANCE = 6.0; // meters to reset zone state
+    
+    // Check all model labels
+    scene.traverse((object) => {
+        if (object.userData && object.userData.isLabel) {
+            // Find the corresponding model using the stored reference
+            let modelObject = null;
+            scene.traverse((node) => {
+                if (node.uuid === object.userData.forModel) {
+                    modelObject = node;
+                }
+            });
+            
+            if (!modelObject || !modelObject.userData.modelPath) {
+                return; // Skip if can't find model or it has no path
+            }
+            
+            const modelPath = modelObject.userData.modelPath;
+            const modelName = modelObject.userData.name || "Unknown model";
+            
+            // Get label position
+            const labelPosition = new THREE.Vector3();
+            object.getWorldPosition(labelPosition);
+            
+            // Calculate distance to player
+            const distance = playerPosition.distanceTo(labelPosition);
+            
+            // Check if player is in this zone
+            const wasInZone = playerModelZones.get(modelPath) || false;
+            
+            if (!wasInZone && distance <= ENTER_DISTANCE) {
+                // Player just entered this zone
+                playerModelZones.set(modelPath, true);
+                triggerModelExplanation(modelObject);
+            }
+            else if (wasInZone && distance > EXIT_DISTANCE) {
+                // Player exited the zone - reset so they can trigger again later
+                playerModelZones.set(modelPath, false);
+                console.log(`Player moved away from ${modelName}`);
+            }
+        }
+    });
+}
+
+function triggerModelExplanation(modelObject) {
+    const modelPath = modelObject.userData.modelPath;
+    const modelName = modelObject.userData.name || "Unknown model";
+    
+    console.log(`Player approached ${modelName}, triggering explanation`);
+    
+    // Check cooldown to prevent too-frequent explanations of the same model
+    const lastExplained = modelObject.userData.lastExplained || 0;
+    if (Date.now() - lastExplained < 60000) { // 1 minute cooldown
+        console.log(`Skipping explanation for ${modelName} - cooldown active`);
+        return;
+    }
+    
+    // Choose audio content based on model
+    let audioContent;
+    
+    if (modelName.includes("Nature Explorer") || modelPath === "model1.glb") {
+        audioContent = "This model is perfect for children ages four to twelve. Our realistic, low-maintenence synthetic wood composite material is durable and resistant to harsh weather. We also have real hardwood options, pressure treated and sealed, available in a dozen varieties including cedar, walnut, redwood and oak. Both are backed by a twenty year warranty.";
+    } else if (modelName.includes("Adventure Tower") || modelPath === "model2.glb") {
+        audioContent = "This model is perfect for schools and parks, featuring a double slide and climbing structure.";
+    } else if (modelName.includes("Toddler Zone") || modelPath === "model3.glb" || 
+               modelPath === "model3-pink.glb") {
+        audioContent = "This play structure is designed for children ages 3 to 9 years old. It has an integrated tic tac toe game for kids to build cognitive skills while they play. The slides are made from high-density polyethylene. The frame is powder-coated aluminum. It's easy to assemble and install by yourself at home.";
+    } else if (modelName.includes("Sandbox")) {
+        audioContent = "Our sandboxes are made from weather-resistant cedar and include a cover to keep the sand clean when not in use. They're perfect for sensory play development.";
+    } else if (modelName.includes("Swing")) {
+        audioContent = "Our swing sets feature reinforced A-frame construction and premium swing seats with safety chains. They're suitable for children ages 3-12.";
+    } else {
+        // Generic response for other models
+        audioContent = `This is our ${modelName} model. It's designed for durability and safety.`;
+    }
+    
+    // Point to the model and speak about it
+    lookAtModelAndSpeak(modelPath, audioContent);
+    
+    // Record when we explained this model
+    modelObject.userData.lastExplained = Date.now();
+}
+
+
     function playAudioFile(filename) {
     // Don't allow audio playback if already speaking
     if (npcSpeaking) {
@@ -4075,7 +4036,7 @@ function easeInOutCubic(t) {
 }
 
         // Handle VR session start
-    function handleVRSessionStart() {
+        function handleVRSessionStart() {
     console.log('VR session started');
 
     // Initialize audio context immediately after user interaction
@@ -4091,13 +4052,18 @@ function easeInOutCubic(t) {
         console.log('Ambient bird sounds started');
     }
     
-   // Make sure ElevenLabs STT is running
-   if (window.microphoneStream && !isRecordingForSTT) {
-        setupElevenLabsSTTRecording();
-        console.log('ElevenLabs STT recording started in VR session');
+    // Make sure speech recognition is running
+    if (recognition && !isListening) {
+        try {
+            recognition.start();
+            isListening = true;
+            console.log('Speech recognition started in VR session');
+        } catch (e) {
+            console.warn('Could not start speech recognition in VR session:', e);
+        }
     }
     
-    
+    // Rest of your existing code...
     
     // Place NPC a comfortable distance in front of the user
     if (npcAvatar) {
@@ -4171,9 +4137,6 @@ function sayGoodbye() {
     function handleVRSessionEnd() {
     console.log('VR session ended');
     
-// Stop ElevenLabs STT recording
-stopElevenLabsRecording();
-
     // Remove VR active class from body
     document.body.classList.remove('vr-active');
     
@@ -4255,9 +4218,10 @@ stopElevenLabsRecording();
             if (volumeIndicator) {
                 // ...existing code...
             }
-            
-           
+                      
         }
+
+        checkModelProximity();
 
         // Update volume visualization - with null checks
     if (audioAnalyser && analyserData && volumeIndicator) {
