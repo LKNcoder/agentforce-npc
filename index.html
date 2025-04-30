@@ -2737,11 +2737,62 @@ function createMicIndicator() {
         
         // NPC speak with text
         function npcSpeak(text) {
-            // Don't allow speech if already speaking
-            if (npcSpeaking) {
-                console.log("NPC is already speaking, ignoring new speech request");
-                return;
-            }
+    // Don't allow speech if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring new speech request");
+        return;
+    }
+    
+    npcSpeaking = true;
+
+    // Check if text is very long and needs segmenting
+    if (text.length > 80) {
+        // Split into segments at logical points (sentences or clauses)
+        const segments = splitIntoSegments(text);
+        
+        // Select animation based on speech content
+        let animationCategory = selectAnimationForText(text);
+        playAnimationByCategory(animationCategory);
+        
+        // Generate and start lip sync for full text
+        startLipSync(text);
+        
+        // Start displaying segments
+        speakWithSegments(segments);
+        
+        // Check if we have a pre-recorded audio for this phrase
+        const audioFile = preloadedPhrases[text];
+        
+        if (audioFile) {
+            // Play the audio file
+            const audio = new Audio(`./audio-cache/${audioFile}`);
+            
+            audio.onended = () => {
+                // Reset NPC state after full audio completes
+                npcSpeaking = false;
+                stopLipSync();
+                resetUncertaintyExpression();
+                
+                if (renderer && renderer.xr.isPresenting) {
+                    vrSpeechBubble.visible = false;
+                } else {
+                    speechBubble.style.display = 'none';
+                }
+                
+                // Return to idle animation
+                if (!npcMoving) {
+                    playAnimationByCategory('idle');
+                }
+            };
+            
+            // Play the audio
+            audio.play().catch(error => {
+                console.error("Error playing audio:", error);
+            });
+        }
+        
+        return;
+    }
             
             npcSpeaking = true;
 
@@ -2873,6 +2924,69 @@ function handleTextOnlySpeech(text) {
         playAnimationByCategory('idle');
     }, speakingDuration);
 }
+
+function splitIntoSegments(text) {
+    // First try to split by sentences
+    let segments = text.split(/(?<=[.!?])\s+/);
+    
+    // If any segment is still too long, split it further
+    const maxSegmentLength = 70;
+    let finalSegments = [];
+    
+    segments.forEach(segment => {
+        if (segment.length <= maxSegmentLength) {
+            finalSegments.push(segment);
+        } else {
+            // Split by commas or other logical breaks
+            const subSegments = segment.split(/(?<=,|;)\s+/);
+            
+            // If still too long, force break by character count
+            let currentSegment = "";
+            subSegments.forEach(subSegment => {
+                if (currentSegment.length + subSegment.length <= maxSegmentLength) {
+                    currentSegment += (currentSegment ? " " : "") + subSegment;
+                } else {
+                    if (currentSegment) {
+                        finalSegments.push(currentSegment);
+                    }
+                    currentSegment = subSegment;
+                }
+            });
+            
+            if (currentSegment) {
+                finalSegments.push(currentSegment);
+            }
+        }
+    });
+    
+    return finalSegments;
+}
+
+// Helper function to select animation based on text content
+function selectAnimationForText(text) {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('hello') || lowerText.includes('welcome') || 
+        lowerText.includes('hi there') || lowerText.startsWith('hi')) {
+        return 'greeting';
+    }
+    else if (lowerText.includes('goodbye') || lowerText.includes('bye')) {
+        return 'greeting';
+    }
+    else if (lowerText.includes("i don't know") || lowerText.includes("sorry")) {
+        return 'error';
+    }
+    else if (lowerText.includes("yes") || lowerText.includes("of course")) {
+        return 'affirmative';
+    }
+    else if (lowerText.includes("no") || lowerText.includes("can't")) {
+        return 'negative';
+    }
+    
+    return 'talking';
+}
+
+
 
 
 
@@ -3108,7 +3222,7 @@ function resetUncertaintyExpression() {
         context.textAlign = 'center';
         context.textBaseline = 'middle';
         
-        // Handle multi-line text
+        // Handle multi-line text - with a maximum of 3 lines for readability
         const words = text.split(' ');
         let lines = [];
         let currentLine = words[0];
@@ -3119,6 +3233,12 @@ function resetUncertaintyExpression() {
             if (metrics.width > canvas.width - 60) {
                 lines.push(currentLine);
                 currentLine = words[i];
+                // Maximum of 3 lines per bubble
+                if (lines.length >= 2) {
+                    // If we're at the limit, add ellipsis to show there's more
+                    currentLine += '...';
+                    break;
+                }
             } else {
                 currentLine = testLine;
             }
@@ -3136,25 +3256,18 @@ function resetUncertaintyExpression() {
         // Update texture
         texture.needsUpdate = true;
         
-        // Position above NPC's head if we have an NPC avatar
+        // Position bubble (unchanged)
         if (npcAvatar) {
             try {
-                // Force matrix update to ensure correct position
                 npcAvatar.updateWorldMatrix(true, false);
-                
-                // Get NPC head position
-                const headPosition = new THREE.Vector3(0, 1.7, 0); // Approximate head position
+                const headPosition = new THREE.Vector3(0, 1.7, 0);
                 headPosition.applyMatrix4(npcAvatar.matrixWorld);
-                
-                // Position speech bubble above head
                 vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
             } catch (err) {
                 console.error('Error positioning speech bubble:', err);
-                // Fallback positioning if we can't get the avatar position
                 vrSpeechBubble.position.set(0, 2, -2);
             }
         } else {
-            // Default position if no avatar
             vrSpeechBubble.position.set(0, 2, -2);
         }
         
@@ -3164,6 +3277,52 @@ function resetUncertaintyExpression() {
         console.error('Error updating VR speech bubble:', error);
     }
 }
+
+
+function speakWithSegments(segments, index = 0) {
+    // Exit if we've shown all segments
+    if (index >= segments.length) {
+        npcSpeaking = false;
+        stopLipSync();
+        resetUncertaintyExpression();
+        
+        if (renderer && renderer.xr.isPresenting) {
+            vrSpeechBubble.visible = false;
+        } else {
+            speechBubble.style.display = 'none';
+        }
+        
+        // Return to idle animation if not moving
+        if (!npcMoving) {
+            playAnimationByCategory('idle');
+        }
+        return;
+    }
+    
+    // Get current segment
+    const segment = segments[index];
+    
+    // Update speech bubble with current segment
+    if (renderer && renderer.xr.isPresenting) {
+        updateVRSpeechBubble(segment);
+    } else {
+        speechBubble = document.getElementById('speechBubble');
+        speechBubble.textContent = segment;
+        speechBubble.style.display = 'block';
+    }
+    
+    // Calculate duration based on text length (approx. 50ms per character)
+    const duration = Math.max(1500, segment.length * 50);
+    
+    // Schedule the next segment
+    setTimeout(() => {
+        speakWithSegments(segments, index + 1);
+    }, duration);
+}
+
+
+
+
 
         // Helper function to draw rounded rectangle
         function roundRect(ctx, x, y, width, height, radius, fill) {
@@ -4256,8 +4415,17 @@ function sayGoodbye() {
         
         // Make VR speech bubble face the camera - with null check
         if (vrSpeechBubble && vrSpeechBubble.visible && camera) {
-            vrSpeechBubble.lookAt(camera.position);
-        }
+    // Get camera position in XZ plane (ignore Y difference)
+    const cameraDirection = new THREE.Vector3();
+    cameraDirection.subVectors(camera.position, vrSpeechBubble.position);
+    cameraDirection.y = 0; // Ignore height difference
+    
+    // Calculate the Y rotation angle
+    if (cameraDirection.length() > 0) {
+        const targetRotation = Math.atan2(cameraDirection.x, cameraDirection.z);
+        vrSpeechBubble.rotation.y = targetRotation;
+    }
+}
         
         // Update animation mixers if available
         if (npcMixer) {
