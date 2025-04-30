@@ -3260,13 +3260,7 @@ function resetUncertaintyExpression() {
                 // Position speech bubble above head
                 vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
                 
-                // CRITICAL FIX: Make speech bubble face the player (not match NPC direction)
-                if (camera) {
-                    vrSpeechBubble.lookAt(camera.position);
-                }
-                
-                // Add a slight tilt so it's easier to read
-                vrSpeechBubble.rotation.x += 0.2;
+              
             } catch (err) {
                 console.error('Error positioning speech bubble:', err);
                 // Fallback positioning
@@ -4405,20 +4399,27 @@ function sayGoodbye() {
 
         // Update speech bubble position and rotation to match NPC, regardless of visibility
         if (vrSpeechBubble && npcAvatar && camera) {
-    // Update position to follow NPC's head
-    const headPosition = new THREE.Vector3(0, 1.7, 0);
-    headPosition.applyMatrix4(npcAvatar.matrixWorld);
-    vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
-    
-    // CRITICAL FIX: Make speech bubble face the player, not match NPC direction
-    vrSpeechBubble.lookAt(camera.position);
-    
-    // Small tilt adjustment
-    vrSpeechBubble.rotation.x += 0.2;
-    
-    // Force visibility if NPC is speaking
-    if (npcSpeaking) {
-        vrSpeechBubble.visible = true;
+    try {
+        // Update position to follow NPC's head
+        const headPosition = new THREE.Vector3(0, 1.7, 0);
+        headPosition.applyMatrix4(npcAvatar.matrixWorld);
+        vrSpeechBubble.position.set(headPosition.x, headPosition.y + 0.5, headPosition.z);
+        
+        // Save original rotation
+        const originalRotation = vrSpeechBubble.rotation.clone();
+        
+        // Make speech bubble face the player
+        vrSpeechBubble.lookAt(camera.position);
+        
+        // Apply a fixed tilt for readability (absolute value, not incremental)
+        vrSpeechBubble.rotation.x = vrSpeechBubble.rotation.x + 0.2;
+        
+        // Force visibility if NPC is speaking
+        if (npcSpeaking) {
+            vrSpeechBubble.visible = true;
+        }
+    } catch (err) {
+        console.error('Error updating speech bubble rotation:', err);
     }
 }
 
