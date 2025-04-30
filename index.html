@@ -1060,6 +1060,8 @@ body.vr-active canvas {
    document.getElementById('enter-vr-button').addEventListener('click', function(e) {
     e.preventDefault();
     console.log('Enter VR button clicked');
+
+    showApiKeyDialog();
     
     // Show loading screen
     const loadingEl = document.getElementById('vr-loading');
@@ -1214,13 +1216,6 @@ function startVRExperience() {
         showVRNotSupportedMessage();
     }
 }
-
-// Modify Enter VR button to show API dialog first
-document.getElementById('enter-vr-button').addEventListener('click', function(e) {
-    e.preventDefault();
-    console.log('Enter VR button clicked');
-    showApiKeyDialog();
-});
 
 
 // Function to process user speech through AI
