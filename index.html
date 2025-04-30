@@ -61,7 +61,7 @@
     <div class="loading" id="loadingScreen">Loading... Please wait</div>
 
     <!-- Import libraries via CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/piper-tts@latest/dist/piper-tts.js"></script>
+    
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
         {
@@ -130,8 +130,14 @@
         let blinkInterval = null;
         let vrSpeechBubble;
 
-        let pingSound;
-        let pingInterval;
+        let ttsCache = {};  // In-memory cache
+    let devMode = true; // Set to true to use cached responses
+    let preloadedPhrases = [
+    "Hello! Welcome to our virtual store. I'm your assistant today.",
+    "Can I help you find anything specific?",
+    "Let me show you our newest products.",
+    "Thank you for visiting our store today!"
+];
 
         let eyeBlinkMorphTargets = {
         left: 'eyeBlinkLeft',  // Adjust these names based on your model
@@ -209,16 +215,10 @@ const visemeMapping = {
           cameraRig.add(camera);
           scene.add(cameraRig);
 
-            
+          initTTSCache(); 
 
           window.addEventListener('DOMContentLoaded', () => {
-    // Check if piperTTS is properly loaded
-    if (typeof PiperTTS === 'undefined') {
-        console.error("piperTTS is not loaded properly!");
-        alert("Text-to-speech library failed to load. Audio may not work.");
-    } else {
-        console.log("piperTTS loaded successfully");
-    }
+    
 });
 
 
@@ -294,9 +294,9 @@ const visemeMapping = {
 
             addVisemeDebugDisplay();
 
-            initPiperTTS();
+          
 
-            setupPingSound(); 
+        
             
             // Load avatar models
              loadAvatarModels();
@@ -326,27 +326,7 @@ const visemeMapping = {
 
 
 
-    function initPiperTTS() {
-    try {
-        window.piperTTS = new PiperTTS();
-        
-        // Use the small model instead of medium
-        window.piperTTS.loadVoice("en_US-libritts-small")
-            .then(() => {
-                console.log("Small piperTTS voice model loaded successfully");
-                npcSpeak("Voice system initialized with small voice model");
-            }).catch(err => {
-                console.error("Failed to load small voice model:", err);
-                
-                // Try an even smaller model as fallback
-                console.log("Trying tiny fallback voice...");
-                window.piperTTS.loadVoice("en_US-libritts-tiny")
-                    .then(() => npcSpeak("Voice system initialized with tiny fallback voice"));
-            });
-    } catch (e) {
-        console.error("Error initializing piperTTS:", e);
-    }
-}
+  
 
 
         function setupLighting() {
@@ -570,7 +550,7 @@ function rotatePlayer(turnX) {
     })
     .then(() => {
         // If box.glb exists, check the npc avatar file
-        return fetch('npc-avatar.glb');
+        return fetch('npc-avatar-new.glb');
     })
     .then(response => {
         if (!response.ok) {
@@ -622,7 +602,7 @@ function rotatePlayer(turnX) {
     function loadNPCAvatar() {
         console.log('Attempting to load NPC avatar GLB...');
         gltfLoader.load(
-            'npc-avatar.glb',
+            'npc-avatar-new.glb',
             onModelLoaded,
             function(xhr) {
                 console.log('NPC model load progress:', (xhr.loaded / xhr.total * 100) + '%');
@@ -663,7 +643,7 @@ function rotatePlayer(turnX) {
         
         // Add model to the scene
         npcAvatar = gltf.scene;
-        npcAvatar.position.set(2, 0, 0); // Position directly on ground
+        npcAvatar.position.set(-0.3, 0, -2.2); // Position directly on ground
         npcAvatar.scale.set(1, 1, 1);
         npcAvatar.castShadow = true;
         
@@ -747,36 +727,6 @@ npcAvatar.traverse(function(child) {
 
 
 
-function setupPingSound() {
-    // Create an audio loader
-    const audioLoader = new THREE.AudioLoader();
-    
-    // Load the ping sound
-    audioLoader.load('ping.mp3', function(buffer) {
-        console.log('Ping sound loaded successfully');
-        
-        // Create a positional audio source
-        pingSound = new THREE.Audio(audioListener);
-        pingSound.setBuffer(buffer);
-        pingSound.setVolume(0.5);
-        
-        // Start playing ping every 10 seconds
-        pingInterval = setInterval(() => {
-            if (pingSound && !pingSound.isPlaying) {
-                console.log('Playing ping sound');
-                pingSound.play();
-            }
-        }, 10000);
-    }, 
-    // onProgress callback
-    function(xhr) {
-        console.log('Ping sound loading: ' + (xhr.loaded / xhr.total * 100) + '%');
-    },
-    // onError callback
-    function(err) {
-        console.error('Error loading ping sound:', err);
-    });
-}
 
 
 function addSpontaneousSpeech() {
@@ -809,19 +759,14 @@ function addSpontaneousSpeech() {
 
 // setup the spontaneous speech timer
 function setupSpontaneousSpeech() {
-    // First short delay before the NPC's first spontaneous speech
-    setTimeout(() => {
-        // Initial greeting after loading
-        npcSpeak("Hello! Welcome to our virtual store. I'm your assistant today.");
-        
-        // Set up recurring random speech with varying intervals
-        setInterval(() => {
-            // Only speak if not already speaking and with some randomness
-            if (!npcSpeaking && Math.random() < 0.7) { // 70% chance to speak when interval triggers
-                addSpontaneousSpeech();
-            }
-        }, 25000 + Math.random() * 20000); // Random interval between 25-45 seconds
-    }, 5000); // Initial 5-second delay before first greeting
+    // Don't do the initial greeting here anymore
+    // Just set up the recurring speech timer
+    setInterval(() => {
+        // Only speak if not already speaking, with randomness, and in VR mode
+        if (!npcSpeaking && Math.random() < 0.7) {
+            addSpontaneousSpeech();
+        }
+    }, 25000 + Math.random() * 20000);
 }
 
 
@@ -835,10 +780,10 @@ function loadNPCAnimations() {
         return;
     }
     
-     // Load external animations from animations.glb
+     // Load external animations from animations3.glb
      console.log('Attempting to load animations from animations.gltf');
     gltfLoader.load(
-        'animations.glb',
+        'animations3.glb',
         function(gltf) {
             console.log(`Loaded ${gltf.animations.length} external animations`);
             
@@ -966,144 +911,175 @@ function loadNPCAnimations() {
         }
         
     function npcSpeak(text) {
+    // Don't allow speech if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring new speech request");
+        return;
+    }
+    
     npcSpeaking = true;
 
-      // Show text in appropriate speech bubble
-      if (renderer.xr.isPresenting) {
+    // Show text in appropriate speech bubble
+    if (renderer.xr.isPresenting) {
         updateVRSpeechBubble(text);
     } else {
         showSpeechBubble(text);
     }
 
     // Start lip sync animation
-    startLipSync(text);
+    // startLipSync(text);
     
-    // Use speak.js for TTS
-    const speakPromise = speakText(text);
+    // Use ElevenLabs TTS
+    speakText(text).then(duration => {
+        console.log(`Speech completed, duration: ${duration}s`);
+        
+        // Small delay before stopping lip sync
+        setTimeout(() => {
+            npcSpeaking = false;
+            stopLipSync();
+            
+            // Return to idle animation
+            if (npcAnimations['talking'] && npcAnimations['idle']) {
+                npcAnimations['talking'].fadeOut(0.5);
+                npcAnimations['idle'].reset().fadeIn(0.5).play();
+            }
+        }, 300); // Small delay to prevent abrupt animation stop
+    }).catch(error => {
+        console.error("Speech failed:", error);
+        npcSpeaking = false;
+        stopLipSync();
+    });
     
-     // If we have a talking animation, use it
-     if (npcAnimations['talking']) {
+    // If we have a talking animation, use it
+    if (npcAnimations['talking']) {
         // Crossfade from idle to talking
         npcAnimations['idle'].fadeOut(0.5);
         npcAnimations['talking'].reset().fadeIn(0.5).play();
-    } 
-    
-    // End speaking after calculated duration - 
-    const speakDuration = text.length * 75; // ~75ms per character is a rough estimate
-    setTimeout(() => {
-        npcSpeaking = false;
-
-         // Stop lip sync
-         stopLipSync();
-        
-        // Return to idle animation
-        if (npcAnimations['talking'] && npcAnimations['idle']) {
-            npcAnimations['talking'].fadeOut(0.5);
-            npcAnimations['idle'].reset().fadeIn(0.5).play();
-        }
-    }, speakDuration);
+    }
 }
 
-//  handle TTS with speak.js
-function speakText(text) {
-    try {
-        if (!window.piperTTS) {
-            window.piperTTS = new PiperTTS({
-                // Configure with your preferred voice model
-                // You can set up multiple voice options
-                voice: "en_US-libritts-high",
-                // Default options
-                sampleRate: 22050,
-                speakerId: 0
-            });
-        }
 
-        // Generate audio from text
-        window.piperTTS.synthesize(text).then(audioData => {
-            // Create an audio buffer from the generated data
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const buffer = audioContext.createBuffer(1, audioData.length, 22050);
-            const channelData = buffer.getChannelData(0);
-            
-            // Copy audioData to channelData
-            for (let i = 0; i < audioData.length; i++) {
-                channelData[i] = audioData[i];
-            }
-            
-            // Create a source node
-            const source = audioContext.createBufferSource();
-            source.buffer = buffer;
-            
-            // Connect to audio output
-            source.connect(audioContext.destination);
-            
-            // If we have positional audio set up, use it
-            if (positionalAudio && positionalAudio.context && npcAvatar) {
-                positionalAudio.setBuffer(buffer);
-                positionalAudio.play();
-            } else {
-                // Otherwise play directly
-                source.start();
-            }
-            
-            // Return the total duration for timing purposes
-            return buffer.duration;
-        }).catch(err => {
-            console.error("piperTTS synthesis failed:", err);
-            return 0;
-        });
-    } catch (e) {
-        console.error('Error using piperTTS:', e);
-        return 0;
+function playAudioFile(filename) {
+    // Don't allow audio playback if already speaking
+    if (npcSpeaking) {
+        console.log("NPC is already speaking, ignoring audio file playback");
+        return Promise.reject(new Error("NPC is already speaking"));
     }
-}     
+    
+    return new Promise((resolve, reject) => {
+        const audio = new Audio(`./audio-cache/${filename}`);
+        
+        // Set up audio callbacks
+        audio.oncanplaythrough = () => {
+            // Start lip sync if needed
+            if (npcAvatar) {
+                // IMPORTANT FIX: Call stopLipSync to clear any previous state
+                stopLipSync();
+                
+                lipSyncStartTime = performance.now() / 1000;
+                lipSyncActive = true;
+                
+                // Estimate duration for lip sync if not available yet
+                const estimatedDuration = audio.duration || 3.0;
+                
+                // Choose text based on filename for better lip sync
+                const lipSyncText = filename.includes("hello") ? 
+                    "Hello welcome to our virtual showroom" : 
+                    "Thank you for visiting goodbye";
+                
+                generateEnhancedLipSync(lipSyncText, estimatedDuration);
+                
+                // CRITICAL FIX: Create the interval to update mouth shapes
+                lipSyncInterval = setInterval(updateMouthShape, 16.67);
+                
+                // Set NPC as speaking
+                npcSpeaking = true;
+                
+                // Use talking animation if available
+                if (npcAnimations['talking'] && npcAnimations['idle']) {
+                    npcAnimations['idle'].fadeOut(0.5);
+                    npcAnimations['talking'].reset().fadeIn(0.5).play();
+                }
+            }
+            
+            // Start playback
+            audio.play();
+        };
+        
+        audio.onended = () => {
+            // Reset NPC state
+            npcSpeaking = false;
+            stopLipSync();
+            
+            // Return to idle animation
+            if (npcAnimations['talking'] && npcAnimations['idle']) {
+                npcAnimations['talking'].fadeOut(0.5);
+                npcAnimations['idle'].reset().fadeIn(0.5).play();
+            }
+            
+            resolve(audio.duration);
+        };
+        
+        audio.onerror = (e) => {
+            console.error("Audio file playback error:", e);
+            npcSpeaking = false;
+            reject(new Error(`Failed to play audio file: ${filename}`));
+        };
+    });
+}
 
-function generateLipSyncFromText(text) {
+
+
+// Helper function to convert base64 to blob
+function base64ToBlob(base64, mimeType) {
+    const byteString = atob(base64);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    
+    for (let i = 0; i < byteString.length; i++) {
+        ia[i] = byteString.charCodeAt(i);
+    }
+    
+    return new Blob([ab], { type: mimeType });
+}
+
+
+function generateEnhancedLipSync(text, audioDuration) {
+    // Clear previous timeline
+    lipSyncTimeline = [];
+    
     const words = text.toLowerCase().trim().split(/\s+/);
-    const timeline = [];
+    const totalCharCount = text.replace(/\s+/g, '').length;
+    
+    // Calculate average time per character based on actual audio duration
+    // This gives us much more accurate timing than fixed values
+    const timePerChar = audioDuration / (totalCharCount + words.length * 0.5);
+    
     let currentTime = 0;
-    const avgWordDuration = 0.3; // seconds per word
     
     words.forEach(word => {
         // Skip empty words
         if (word.length === 0) return;
         
         // Handle punctuation
-        word = word.replace(/[.,!?;:]/g, '');
-        
-        // Add a small pause for punctuation
-        if (/[.,!?;:]/.test(word)) {
-            timeline.push({
+        const hasPunctuation = /[.,!?;:]$/.test(word);
+        if (hasPunctuation) {
+            const cleanWord = word.slice(0, -1);
+            processWord(cleanWord);
+            
+            // Add pause for punctuation
+            lipSyncTimeline.push({
                 start: currentTime,
-                end: currentTime + 0.2,
-                value: 'X' // Closed mouth for brief pause
+                end: currentTime + 0.15, // Longer pause for punctuation
+                value: 'X'
             });
-            currentTime += 0.2;
-        }
-        
-        // Process each character in the word
-        for (let i = 0; i < word.length; i++) {
-            const char = word[i];
-            let viseme = mapCharToViseme(char);
-            let duration = 0.1; // 100ms per character is approximation
-            
-            // Longer duration for vowels
-            if ('aeiou'.includes(char)) {
-                duration = 0.15;
-            }
-            
-            // Add viseme to timeline
-            timeline.push({
-                start: currentTime,
-                end: currentTime + duration,
-                value: viseme
-            });
-            
-            currentTime += duration;
+            currentTime += 0.15;
+        } else {
+            processWord(word);
         }
         
         // Small pause between words
-        timeline.push({
+        lipSyncTimeline.push({
             start: currentTime,
             end: currentTime + 0.05,
             value: 'X'
@@ -1111,8 +1087,41 @@ function generateLipSyncFromText(text) {
         currentTime += 0.05;
     });
     
-    return timeline;
+    function processWord(word) {
+        // Process each character in the word with variable duration
+        for (let i = 0; i < word.length; i++) {
+            const char = word[i];
+            let viseme = mapCharToViseme(char);
+            
+            // Vowels take longer to pronounce
+            let duration = 'aeiou'.includes(char) ? timePerChar * 1.5 : timePerChar * 0.8;
+            
+            // Add viseme to timeline
+            lipSyncTimeline.push({
+                start: currentTime,
+                end: currentTime + duration,
+                value: viseme
+            });
+            
+            currentTime += duration;
+        }
+    }
+    
+    // Adjust timing to match audio duration
+    if (currentTime < audioDuration) {
+        // Stretch timing to match audio duration
+        const stretchFactor = audioDuration / currentTime;
+        lipSyncTimeline.forEach(entry => {
+            entry.start *= stretchFactor;
+            entry.end *= stretchFactor;
+        });
+    }
+    
+    // Set lip sync as active
+    lipSyncActive = true;
+    console.log(`Generated enhanced lip sync with ${lipSyncTimeline.length} visemes for ${audioDuration.toFixed(2)}s audio`);
 }
+
 
 function mapCharToViseme(char) {
     // Map from character to Rhubarb viseme
@@ -1132,18 +1141,18 @@ function startLipSync(text) {
     // Stop any existing lip sync
     stopLipSync();
     
-    // Generate timeline from text
-    lipSyncTimeline = generateLipSyncFromText(text);
-    
-    // Start time tracking
+    // Set up initial state - we'll generate the timeline later when we have duration
     lipSyncStartTime = performance.now() / 1000;
     lipSyncActive = true;
     
-    // Set initial mouth shape
+    // Set initial mouth shape to neutral
     setViseme('X');
     
     // Create interval to update mouth shape
     lipSyncInterval = setInterval(updateMouthShape, 16.67); // ~60fps
+    
+    // Note: We no longer generate timeline here - generateEnhancedLipSync will do that
+    // when audio duration is available from the TTS engine
 }
 
 function stopLipSync() {
@@ -1162,18 +1171,37 @@ function updateMouthShape() {
     
     // Find the appropriate viseme for current time
     let foundViseme = false;
+    
+    // Add some lookahead to improve sync perception (5-10ms)
+    const lookahead = 0.008;
+    const adjustedTime = elapsed + lookahead;
+    
     for (let i = 0; i < lipSyncTimeline.length; i++) {
         const entry = lipSyncTimeline[i];
-        if (elapsed >= entry.start && elapsed < entry.end) {
-            setViseme(entry.value);
+        if (adjustedTime >= entry.start && adjustedTime < entry.end) {
+            // Smooth transitions between visemes
+            if (currentViseme !== entry.value) {
+                setViseme(entry.value);
+            }
             foundViseme = true;
             break;
         }
     }
     
-    // Check if we reached the end of the timeline
-    if (!foundViseme && elapsed > lipSyncTimeline[lipSyncTimeline.length - 1].end) {
-        stopLipSync();
+    // If we reached the end of the timeline or no matching entry
+    if (!foundViseme) {
+        if (elapsed > lipSyncTimeline[lipSyncTimeline.length - 1].end) {
+            stopLipSync();
+        } else if (elapsed < lipSyncTimeline[0].start) {
+            // Before the first viseme
+            setViseme('X');
+        }
+    }
+    
+    // Update debug display
+    const debugEl = document.getElementById('viseme-debug');
+    if (debugEl) {
+        debugEl.textContent = `Viseme: ${currentViseme} | Time: ${elapsed.toFixed(2)}s`;
     }
 }
 
@@ -1873,6 +1901,162 @@ function createMuteToggle() {
 }   
 
 
+
+
+
+
+
+function speakText(text) {
+    return new Promise((resolve, reject) => {
+        console.log("TEST MODE: Using only pre-recorded audio files");
+        
+        // Determine which audio file to play based on the content
+        let filename;
+        if (text.toLowerCase().includes("goodbye") || 
+            text.toLowerCase().includes("bye") || 
+            text.toLowerCase().includes("thank")) {
+            filename = "thanks-for-visiting-goodbye-.mp3";
+        } else {
+            // Default to hello for everything else
+            filename = "hello-welcome-to-our-virtual-s.mp3";
+        }
+        
+        // Use playAudioFile which handles all the lip sync and animation logic
+        console.log(`Playing audio file: ${filename}`);
+        playAudioFile(filename)
+            .then(duration => {
+                resolve(duration);
+            })
+            .catch(err => {
+                console.error("Audio playback error:", err);
+                reject(err);
+            });
+    });
+}
+
+// Save cache to localStorage (stores URLs)
+function saveCacheToStorage() {
+    try {
+        // Just store the keys that we've cached
+        const cachedKeys = Object.keys(ttsCache);
+        localStorage.setItem('tts_cached_keys', JSON.stringify(cachedKeys));
+    } catch (e) {
+        console.warn('Failed to save cache to localStorage:', e);
+    }
+}
+
+// Load cache from localStorage on startup
+function loadCacheFromStorage() {
+    try {
+        const cachedKeys = JSON.parse(localStorage.getItem('tts_cached_keys') || '[]');
+        console.log(`Found ${cachedKeys.length} cached TTS phrases in storage`);
+        
+        // We'll load these lazily when needed rather than immediately
+    } catch (e) {
+        console.warn('Failed to load cache from localStorage:', e);
+    }
+}
+
+function initTTSCache() {
+    loadCacheFromStorage();
+
+    devMode = true;
+    
+    // Create a dev mode toggle
+    createDevModeToggle();
+}
+
+
+function startPeriodicSpeechTest() {
+    // Clear any existing interval
+    if (window.speechTestInterval) {
+        clearInterval(window.speechTestInterval);
+    }
+    
+    // Start a new interval that triggers speech every few seconds
+    window.speechTestInterval = setInterval(() => {
+        // Only speak if not already speaking
+        if (!npcSpeaking && npcAvatar) {
+            console.log("Triggering test speech");
+            npcSpeak("Hello! Welcome to our virtual showroom!");
+        }
+    }, 10000); // Every 10 seconds
+    
+    console.log("Started periodic speech test - will repeat greeting every 10 seconds");
+}
+
+
+
+function createDevModeToggle() {
+    // Create a simple button in the corner
+    const button = document.createElement('button');
+    button.textContent = devMode ? 'DEV MODE ON' : 'DEV MODE OFF';
+    button.style.position = 'fixed';
+    button.style.top = '10px';
+    button.style.right = '10px';
+    button.style.zIndex = '1000';
+    button.style.padding = '5px 10px';
+    button.style.background = devMode ? '#44ff44' : '#ff4444';
+    
+    button.onclick = () => {
+        devMode = !devMode;
+        button.textContent = devMode ? 'DEV MODE ON' : 'DEV MODE OFF';
+        button.style.background = devMode ? '#44ff44' : '#ff4444';
+        console.log(`Dev mode ${devMode ? 'enabled' : 'disabled'}`);
+    };
+    
+    document.body.appendChild(button);
+}
+
+// Function to pre-populate the cache with test phrases
+function preloadTestPhrases() {
+    if (Object.keys(ttsCache).length > 0) {
+        console.log("Cache already has phrases, skipping preload");
+        return;
+    }
+    
+    console.log("Preloading test phrases...");
+    
+    // Process one phrase at a time
+    let index = 0;
+    
+    function loadNextPhrase() {
+        if (index >= preloadedPhrases.length) {
+            console.log("Finished preloading all test phrases");
+            return;
+        }
+        
+        const phrase = preloadedPhrases[index];
+        console.log(`Preloading phrase ${index + 1}/${preloadedPhrases.length}: "${phrase}"`);
+        
+        // Call speakText with devMode temporarily disabled
+        const tempDevMode = devMode;
+        devMode = false;
+        
+        speakText(phrase)
+            .then(() => {
+                console.log(`Successfully cached phrase: "${phrase}"`);
+                index++;
+                setTimeout(loadNextPhrase, 500); // Small delay between phrases
+            })
+            .catch(err => {
+                console.error(`Failed to preload phrase: "${phrase}"`, err);
+                index++;
+                setTimeout(loadNextPhrase, 1000); // Longer delay after error
+            })
+            .finally(() => {
+                devMode = tempDevMode;
+            });
+    }
+    
+    loadNextPhrase();
+}
+
+
+
+
+
+
 // New function to start audio recording
 function startRecordingContinuous() {
     navigator.mediaDevices.getUserMedia({ audio: true })
@@ -2091,9 +2275,6 @@ function handleVRSessionStart() {
             source.start();
 
             setupPingSound(); // Setup ping sound 
-            
-            // Test that speech works
-            speakText("Audio system initialized");
         });
     }
     
@@ -2111,9 +2292,8 @@ function handleVRSessionStart() {
     camera.position.x = 0;
     camera.position.z = 0;
     
-   
-     // Get reference space for teleportation
-     const session = renderer.xr.getSession();
+    // Get reference space for teleportation
+    const session = renderer.xr.getSession();
     if (session) {
         session.requestReferenceSpace('local-floor').then((refSpace) => {
             xrImmersiveRefSpace = refSpace;
@@ -2122,6 +2302,18 @@ function handleVRSessionStart() {
             console.warn("Could not get local-floor reference space:", err);
         });
     }
+    
+    // Delay the welcome message until VR is fully initialized
+    setTimeout(() => {
+        if (!npcSpeaking) {
+            showSpeechBubble("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            playAudioFile("hello-welcome-to-our-virtual-s.mp3").catch(err => {
+                console.error("Failed to play welcome audio:", err);
+                // Fallback to TTS if audio file fails
+                npcSpeak("Hello! Welcome to our virtual showroom! I'm Sunny. I'm here to help!");
+            });
+        }
+    }, 3000); // 3 seconds after entering VR
 }
 
 
@@ -2231,6 +2423,27 @@ function createTeleportEffect(x, z) {
 
 
 
+
+
+
+// Call this after everything is loaded
+document.addEventListener('DOMContentLoaded', () => {
+    // Wait a bit for everything else to initialize
+    setTimeout(testTTSCache, 2000);
+});
+
+function testTTSCache() {
+    // Force devMode to true to prevent any API calls
+    devMode = true;
+    
+    // Start the periodic speech test
+    setTimeout(startPeriodicSpeechTest, 5000); // Start after 5 seconds
+}
+
+
+
+
+
 function handleVRSessionEnd() {
     // Make UI elements visible again when exiting VR
     if (muteButton) muteButton.visible = true;
@@ -2239,37 +2452,28 @@ function handleVRSessionEnd() {
 
         
 function quitApplication() {
-    showSpeechBubble('Exiting application...');
+    showSpeechBubble('Thanks for visiting! Goodbye!');
     
-    // Fade to black effect
-    const overlay = document.createElement('div');
-    overlay.style.position = 'fixed';
-    overlay.style.top = 0;
-    overlay.style.left = 0;
-    overlay.style.width = '100%';
-    overlay.style.height = '100%';
-    overlay.style.backgroundColor = 'black';
-    overlay.style.opacity = 0;
-    overlay.style.transition = 'opacity 1s';
-    overlay.style.zIndex = 1000;
-    document.body.appendChild(overlay);
-    
-    // Fade in then exit
-    setTimeout(() => {
-        overlay.style.opacity = 1;
-        
-        // After fade completes, close the application
-        setTimeout(() => {
-            // For browser context, show message and redirect
-            if (window.confirm('Exit application?')) {
-                window.close(); // Might not work in most browsers for security reasons
-                
-                // Fallback if window.close() fails
+    // Play goodbye audio and exit immediately after it completes
+    playAudioFile("thanks-for-visiting-goodbye-.mp3")
+        .then(() => {
+            // Immediately exit after audio completes
+            window.close();
+            
+            // Fallback if window.close() doesn't work
+            setTimeout(() => {
                 window.location.href = 'about:blank';
-            }
-        }, 1000);
-    }, 10);
+            }, 100);
+        })
+        .catch(err => {
+            console.error("Failed to play goodbye audio:", err);
+            // If audio fails, exit immediately
+            window.close();
+            setTimeout(() => window.location.href = 'about:blank', 100);
+        });
 }
+
+
 
     </script>
 </body>
